@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="id" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}POS Stok Monitoring{% endblock %}</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg-primary: #0f1117;
+            --bg-secondary: #1a1d27;
+            --bg-card: rgba(26, 29, 39, 0.7);
+            --bg-glass: rgba(255, 255, 255, 0.04);
+            --border-glass: rgba(255, 255, 255, 0.08);
+            --accent: #6366f1;
+            --accent-light: #818cf8;
+            --accent-glow: rgba(99, 102, 241, 0.15);
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            background: var(--bg-primary);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Ambient Background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: 
+                radial-gradient(ellipse at 20% 50%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 20%, rgba(16, 185, 129, 0.06) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 80%, rgba(245, 158, 11, 0.04) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* Navbar */
+        .navbar {
+            background: rgba(15, 17, 23, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-glass);
+            padding: 0.75rem 0;
+            z-index: 1030;
+        }
+
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.15rem;
+            letter-spacing: -0.02em;
+            color: var(--text-primary) !important;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .navbar-brand .brand-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-light));
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+        }
+
+        .navbar .nav-link {
+            color: var(--text-secondary) !important;
+            font-size: 0.85rem;
+            font-weight: 500;
+            padding: 0.5rem 1rem !important;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+
+        .navbar .nav-link:hover,
+        .navbar .nav-link.active {
+            color: var(--text-primary) !important;
+            background: var(--bg-glass);
+        }
+
+        .server-badge {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-glass);
+            color: var(--accent-light);
+            padding: 0.35rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .server-badge .pulse {
+            width: 6px;
+            height: 6px;
+            background: var(--success);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* Main container */
+        .container-main {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 1.5rem 1.5rem 3rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Glass Card */
+        .glass-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-glass);
+            border-radius: 16px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .glass-card:hover {
+            border-color: rgba(99, 102, 241, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Override Bootstrap cards */
+        .card {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-glass);
+            border-radius: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            transform: none;
+        }
+
+        .card-header {
+            background: transparent;
+            border-bottom: 1px solid var(--border-glass);
+            color: var(--text-primary);
+            padding: 1rem 1.25rem;
+            font-weight: 600;
+            border-radius: 16px 16px 0 0 !important;
+        }
+
+        /* Tables */
+        .table {
+            --bs-table-bg: transparent;
+            --bs-table-hover-bg: rgba(99, 102, 241, 0.05);
+            color: var(--text-primary);
+            font-size: 0.85rem;
+        }
+
+        .table thead th {
+            background: rgba(255, 255, 255, 0.03);
+            border-bottom: 1px solid var(--border-glass);
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            padding: 0.75rem 1rem;
+            white-space: nowrap;
+        }
+
+        .table td {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            padding: 0.65rem 1rem;
+            vertical-align: middle;
+        }
+
+        .table tbody tr {
+            transition: background-color 0.15s ease;
+        }
+
+        /* Buttons */
+        .btn-accent {
+            background: linear-gradient(135deg, var(--accent), #4f46e5);
+            border: none;
+            color: white;
+            font-weight: 600;
+            font-size: 0.85rem;
+            padding: 0.5rem 1.25rem;
+            border-radius: 10px;
+            transition: all 0.2s ease;
+        }
+
+        .btn-accent:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
+            color: white;
+        }
+
+        .btn-glass {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-glass);
+            color: var(--text-primary);
+            font-size: 0.85rem;
+            padding: 0.5rem 1rem;
+            border-radius: 10px;
+            transition: all 0.2s ease;
+        }
+
+        .btn-glass:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-primary);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        /* Form controls */
+        .form-control, .form-select {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-glass);
+            color: var(--text-primary);
+            border-radius: 10px;
+            font-size: 0.85rem;
+            padding: 0.55rem 0.85rem;
+            transition: all 0.2s ease;
+        }
+
+        .form-control:focus, .form-select:focus {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+            color: var(--text-primary);
+        }
+
+        .form-control::placeholder {
+            color: var(--text-muted);
+        }
+
+        .form-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            margin-bottom: 0.35rem;
+        }
+
+        /* Badges */
+        .badge-glass {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-glass);
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 0.7rem;
+            padding: 0.3rem 0.6rem;
+            border-radius: 6px;
+        }
+
+        /* Alerts */
+        .alert-glass {
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+        }
+
+        .alert-glass.alert-danger {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.2);
+        }
+
+        .alert-glass.alert-success {
+            background: rgba(16, 185, 129, 0.1);
+            border-color: rgba(16, 185, 129, 0.2);
+        }
+
+        /* Stat Cards */
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-glass);
+            border-radius: 16px;
+            padding: 1.25rem;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            border-color: rgba(99, 102, 241, 0.2);
+        }
+
+        .stat-value {
+            font-size: 1.75rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            background: linear-gradient(135deg, var(--accent-light), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            margin-top: 0.35rem;
+        }
+
+        .stat-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            margin-bottom: 0.75rem;
+        }
+
+        /* Loading */
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 3rem;
+        }
+
+        .loading-spinner.show {
+            display: block;
+        }
+
+        .loader {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--border-glass);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Footer */
+        .footer {
+            background: transparent;
+            border-top: 1px solid var(--border-glass);
+            color: var(--text-muted);
+            padding: 1.5rem 0;
+            text-align: center;
+            font-size: 0.75rem;
+            margin-top: 2rem;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+        /* Modals */
+        .modal-content {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-glass);
+            border-radius: 16px;
+        }
+
+        .modal-header {
+            border-bottom: 1px solid var(--border-glass);
+            background: transparent;
+        }
+
+        .modal-footer {
+            border-top: 1px solid var(--border-glass);
+            background: transparent;
+        }
+
+        /* Animation fade-in */
+        .fade-up {
+            animation: fadeUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Stock colors */
+        .stock-danger { color: var(--danger); font-weight: 700; }
+        .stock-warning { color: var(--warning); font-weight: 600; }
+        .stock-ok { color: var(--success); }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container-main { padding: 1rem; }
+            .stat-value { font-size: 1.35rem; }
+            .navbar-brand { font-size: 1rem; }
+        }
+
+        {% block extra_css %}{% endblock %}
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg sticky-top">
+        <div class="container-fluid px-3">
+            <a class="navbar-brand" href="/">
+                <span class="brand-icon"><i class="fas fa-cube"></i></span>
+                StokMonitor
+            </a>
+            <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto gap-1">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/stok/">
+                            <i class="fas fa-chart-line fa-sm"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/stok/index">
+                            <i class="fas fa-server fa-sm"></i> Servers
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/stok/servers">
+                            <i class="fas fa-sliders-h fa-sm"></i> Settings
+                        </a>
+                    </li>
+                </ul>
+                <span id="current-server-badge" class="server-badge ms-3">
+                    <span class="pulse"></span>
+                    <span id="server-name">Belum dipilih</span>
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container-main">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container-fluid">
+            <p class="mb-0">StokMonitor &copy; 2024 &middot; Optimized Query Engine &middot; MVCR Architecture</p>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        function updateServerBadge() {
+            fetch('/stok/get-current-server')
+                .then(r => r.json())
+                .then(data => {
+                    const el = document.getElementById('server-name');
+                    if (data.status === 'success' && data.server) {
+                        el.textContent = data.server.name;
+                    } else {
+                        el.textContent = 'Belum dipilih';
+                    }
+                });
+        }
+        document.addEventListener('DOMContentLoaded', updateServerBadge);
+    </script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

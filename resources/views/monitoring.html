@@ -1,0 +1,706 @@
+{% extends "base.html" %}
+{% block title %}Monitoring Stok - StokMonitor{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 fade-up">
+    <div>
+        <h3 style="font-weight:800;letter-spacing:-0.03em;margin-bottom:0.25rem">
+            <i class="fas fa-chart-line" style="color:var(--accent)"></i> Monitor Stok
+        </h3>
+        <p style="color:var(--text-muted);font-size:0.85rem;margin:0">Cari barang dari snapshot lokal — pencarian instan</p>
+    </div>
+    <div class="d-flex gap-2 mt-2 mt-md-0">
+        <button class="btn btn-glass btn-sm" onclick="refreshSnapshot()" id="btn-refresh" title="Rebuild semua data dari server">
+            <i class="fas fa-sync-alt fa-sm"></i> Full Refresh
+        </button>
+        <button class="btn btn-sm" id="btn-delta" onclick="deltaRefresh()" title="Update perubahan terbaru saja (~1-3 detik)" style="background:rgba(16,185,129,0.1);color:var(--success);border:1px solid rgba(16,185,129,0.3);border-radius:8px">
+            <i class="fas fa-bolt fa-sm"></i> Quick Update
+        </button>
+        <span class="badge-glass" id="snapshot-tanggal-badge" style="font-size:0.75rem;display:none">
+            <i class="fas fa-calendar-day fa-xs"></i> Stok per: <strong id="snapshot-tanggal-text">-</strong>
+        </span>
+        <a href="/stok/index" class="btn btn-glass btn-sm">
+            <i class="fas fa-exchange-alt fa-sm"></i> Ganti Server
+        </a>
+    </div>
+</div>
+
+<div id="alert-container"></div>
+
+<!-- Snapshot Status Banner -->
+<div id="snapshot-banner" class="glass-card p-3 mb-4 fade-up" style="animation-delay:0.05s">
+    <div class="d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center gap-3" style="flex:1">
+            <div id="snapshot-icon" style="width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--accent-glow)">
+                <i class="fas fa-database" style="color:var(--accent-light)"></i>
+            </div>
+            <div style="flex:1">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <span style="font-weight:700;font-size:0.85rem" id="snapshot-title">Snapshot Status</span>
+                    <span class="badge-glass" id="snapshot-badge" style="font-size:0.65rem">Checking...</span>
+                </div>
+                <div id="snapshot-progress-wrap" style="display:none">
+                    <div style="background:var(--bg-glass);border-radius:6px;height:6px;overflow:hidden;margin-bottom:4px">
+                        <div id="snapshot-progress-bar" style="height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-light));border-radius:6px;width:0%;transition:width 0.3s ease"></div>
+                    </div>
+                </div>
+                <p style="color:var(--text-muted);font-size:0.75rem;margin:0" id="snapshot-message">Mengecek status...</p>
+            </div>
+        </div>
+        <button class="btn btn-sm" id="btn-cancel" style="display:none;background:rgba(239,68,68,0.15);color:var(--danger);border:1px solid rgba(239,68,68,0.3);border-radius:8px;font-size:0.75rem" onclick="cancelRefresh()">
+            <i class="fas fa-times fa-sm"></i> Batal
+        </button>
+    </div>
+</div>
+
+<!-- Search Section -->
+<div class="glass-card p-4 mb-4 fade-up" style="animation-delay:0.1s">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-2 col-6">
+            <label class="form-label">Tanggal</label>
+            <input type="date" id="filter-tanggal" class="form-control form-control-sm" value="{{ tanggal }}">
+        </div>
+        <div class="col-md-2 col-6">
+            <label class="form-label">Cari Berdasarkan</label>
+            <select id="filter-type" class="form-select form-select-sm">
+                <option value="nama">Nama Barang</option>
+                <option value="kode">Kode Barang</option>
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Kata Kunci</label>
+            <div class="input-group input-group-sm">
+                <input type="text" id="filter-search" class="form-control" placeholder="Ketik nama atau kode barang...">
+                <button class="btn btn-accent" onclick="doSearch()" id="btn-search">
+                    <i class="fas fa-search fa-sm"></i>
+                </button>
+            </div>
+        </div>
+        <div class="col-md-2 col-6">
+            <label class="form-label">Divisi</label>
+            <select id="filter-divisi" class="form-select form-select-sm">
+                <option value="">Semua</option>
+            </select>
+        </div>
+        <div class="col-md-1 col-6">
+            <label class="form-label">Min Stok</label>
+            <input type="number" id="filter-min-stok" class="form-control form-control-sm" value="10" min="0">
+        </div>
+        <div class="col-md-2 col-6">
+            <label class="form-label" style="opacity:0">.</label>
+            <div class="d-flex gap-1">
+                <span class="badge-glass" id="search-time" style="font-size:0.65rem;display:none"><i class="fas fa-bolt fa-xs" style="color:var(--warning)"></i> <span id="search-ms">0</span>ms</span>
+                <span class="badge-glass" id="search-source" style="font-size:0.65rem;display:none"><i class="fas fa-memory fa-xs"></i> <span id="source-text">memory</span></span>
+            </div>
+        </div>
+    </div>
+    <div class="mt-2" style="font-size:0.72rem;color:var(--text-muted)">
+        <i class="fas fa-lightbulb fa-xs" style="color:var(--warning)"></i>
+        Tip: Gunakan <code style="color:var(--accent-light)">%</code> sebagai wildcard. Contoh: <code style="color:var(--accent-light)">KA %</code> atau <code style="color:var(--accent-light)">%KEMBANG%</code>
+    </div>
+</div>
+
+<!-- Welcome State -->
+<div id="welcome-state" class="glass-card text-center py-5 mb-4 fade-up" style="animation-delay:0.15s">
+    <div style="width:80px;height:80px;margin:0 auto 1.5rem;background:var(--accent-glow);border-radius:20px;display:flex;align-items:center;justify-content:center">
+        <i class="fas fa-search" style="font-size:2rem;color:var(--accent-light)"></i>
+    </div>
+    <h5 style="font-weight:700;margin-bottom:0.5rem">Mulai Pencarian</h5>
+    <p style="color:var(--text-muted);font-size:0.85rem;max-width:400px;margin:0 auto" id="welcome-text">
+        Ketik nama atau kode barang, lalu tekan <kbd style="background:var(--bg-glass);border:1px solid var(--border-glass);padding:0.1rem 0.4rem;border-radius:4px;font-size:0.75rem">Enter</kbd>
+    </p>
+</div>
+
+<!-- Stats -->
+<div class="row g-3 mb-4" id="stats-container" style="display:none">
+    <div class="col-6 col-lg-3">
+        <div class="stat-card">
+            <div class="stat-icon" style="background:var(--accent-glow);color:var(--accent-light)"><i class="fas fa-boxes"></i></div>
+            <div class="stat-value" id="stat-items">-</div>
+            <div class="stat-label">Total Item</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="stat-card">
+            <div class="stat-icon" style="background:rgba(16,185,129,0.1);color:var(--success)"><i class="fas fa-sitemap"></i></div>
+            <div class="stat-value" id="stat-divisi">-</div>
+            <div class="stat-label">Divisi</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="stat-card">
+            <div class="stat-icon" style="background:rgba(245,158,11,0.1);color:var(--warning)"><i class="fas fa-coins"></i></div>
+            <div class="stat-value" id="stat-nominal" style="font-size:1.1rem">Rp -</div>
+            <div class="stat-label">Total Nominal</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="stat-card">
+            <div class="stat-icon" style="background:rgba(239,68,68,0.1);color:var(--danger)"><i class="fas fa-layer-group"></i></div>
+            <div class="stat-value" id="stat-avg">-</div>
+            <div class="stat-label">Avg Stok</div>
+        </div>
+    </div>
+</div>
+
+<!-- Data Table -->
+<div class="card" id="data-card" style="display:none">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span><i class="fas fa-table fa-sm"></i> Hasil Pencarian</span>
+        <div class="d-flex gap-2 align-items-center">
+            <!-- Result filter -->
+            <input type="text" id="result-filter" class="form-control form-control-sm" placeholder="Filter hasil..." style="width:200px;background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.1);color:var(--text-primary);font-size:0.75rem" oninput="filterResults()">
+            <!-- Column toggle -->
+            <div class="dropdown">
+                <button class="btn btn-glass btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" style="font-size:0.7rem">
+                    <i class="fas fa-columns fa-xs"></i> Kolom
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end" style="background:var(--card-bg);border-color:rgba(255,255,255,0.1);font-size:0.75rem;padding:0.5rem" id="col-toggles">
+                    <li><label class="dropdown-item d-flex gap-2 align-items-center" style="color:var(--text-primary);cursor:pointer"><input type="checkbox" data-col="0" checked> Kd Divisi</label></li>
+                    <li><label class="dropdown-item d-flex gap-2 align-items-center" style="color:var(--text-primary);cursor:pointer"><input type="checkbox" data-col="1" checked> Divisi</label></li>
+                    <li><label class="dropdown-item d-flex gap-2 align-items-center" style="color:var(--text-primary);cursor:pointer"><input type="checkbox" data-col="2" checked> Kode Barang</label></li>
+                    <li><label class="dropdown-item d-flex gap-2 align-items-center" style="color:var(--text-primary);cursor:pointer"><input type="checkbox" data-col="3" checked> Barang</label></li>
+                    <li><label class="dropdown-item d-flex gap-2 align-items-center" style="color:var(--text-primary);cursor:pointer"><input type="checkbox" data-col="4" checked> Kategori</label></li>
+                    <li><label class="dropdown-item d-flex gap-2 align-items-center" style="color:var(--text-primary);cursor:pointer"><input type="checkbox" data-col="5" checked> Merk</label></li>
+                    <li><label class="dropdown-item d-flex gap-2 align-items-center" style="color:var(--text-primary);cursor:pointer"><input type="checkbox" data-col="6"> Model</label></li>
+                    <li><label class="dropdown-item d-flex gap-2 align-items-center" style="color:var(--text-primary);cursor:pointer"><input type="checkbox" data-col="7"> Warna</label></li>
+                    <li><label class="dropdown-item d-flex gap-2 align-items-center" style="color:var(--text-primary);cursor:pointer"><input type="checkbox" data-col="8"> Ukuran</label></li>
+                    <li><label class="dropdown-item d-flex gap-2 align-items-center" style="color:var(--text-primary);cursor:pointer"><input type="checkbox" data-col="9" checked> Stok Akhir</label></li>
+                    <li><label class="dropdown-item d-flex gap-2 align-items-center" style="color:var(--text-primary);cursor:pointer"><input type="checkbox" data-col="10" checked> Harga Average</label></li>
+                    <li><label class="dropdown-item d-flex gap-2 align-items-center" style="color:var(--text-primary);cursor:pointer"><input type="checkbox" data-col="11" checked> Harga Jual</label></li>
+                    <li><label class="dropdown-item d-flex gap-2 align-items-center" style="color:var(--text-primary);cursor:pointer"><input type="checkbox" data-col="12" checked> Nominal</label></li>
+                    <li><label class="dropdown-item d-flex gap-2 align-items-center" style="color:var(--text-primary);cursor:pointer"><input type="checkbox" data-col="13" checked> Harga Beli Akhir</label></li>
+                </ul>
+            </div>
+            <span class="badge-glass" id="row-count">0 baris</span>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive" id="table-container" style="display:none;max-height:70vh;overflow-y:auto">
+            <table class="table table-hover mb-0" id="data-table">
+                <thead style="position:sticky;top:0;z-index:2;background:var(--card-bg)">
+                    <tr>
+                        <th class="sortable" data-key="Kode Divisi" data-col="0">Kd Div <i class="fas fa-sort fa-xs" style="opacity:0.3"></i></th>
+                        <th class="sortable" data-key="Divisi" data-col="1">Divisi <i class="fas fa-sort fa-xs" style="opacity:0.3"></i></th>
+                        <th class="sortable" data-key="Kode Barang" data-col="2">Kode <i class="fas fa-sort fa-xs" style="opacity:0.3"></i></th>
+                        <th class="sortable" data-key="Barang" data-col="3">Barang <i class="fas fa-sort fa-xs" style="opacity:0.3"></i></th>
+                        <th class="sortable" data-key="Kategori" data-col="4">Kategori <i class="fas fa-sort fa-xs" style="opacity:0.3"></i></th>
+                        <th class="sortable" data-key="Merk" data-col="5">Merk <i class="fas fa-sort fa-xs" style="opacity:0.3"></i></th>
+                        <th class="sortable" data-key="Model" data-col="6" style="display:none">Model <i class="fas fa-sort fa-xs" style="opacity:0.3"></i></th>
+                        <th class="sortable" data-key="Warna" data-col="7" style="display:none">Warna <i class="fas fa-sort fa-xs" style="opacity:0.3"></i></th>
+                        <th class="sortable" data-key="Ukuran" data-col="8" style="display:none">Ukuran <i class="fas fa-sort fa-xs" style="opacity:0.3"></i></th>
+                        <th class="sortable text-end" data-key="Stok Akhir" data-type="num" data-col="9">Stok <i class="fas fa-sort fa-xs" style="opacity:0.3"></i></th>
+                        <th class="sortable text-end" data-key="Harga Average" data-type="num" data-col="10">H. Avg <i class="fas fa-sort fa-xs" style="opacity:0.3"></i></th>
+                        <th class="sortable text-end" data-key="Harga Jual" data-type="num" data-col="11">H. Jual <i class="fas fa-sort fa-xs" style="opacity:0.3"></i></th>
+                        <th class="sortable text-end" data-key="Nominal" data-type="num" data-col="12">Nominal <i class="fas fa-sort fa-xs" style="opacity:0.3"></i></th>
+                        <th class="sortable text-end" data-key="Harga Beli Akhir" data-type="num" data-col="13">H. Beli <i class="fas fa-sort fa-xs" style="opacity:0.3"></i></th>
+                    </tr>
+                </thead>
+                <tbody id="data-tbody"></tbody>
+            </table>
+        </div>
+        <div id="empty-state" class="text-center py-5" style="display:none">
+            <i class="fas fa-inbox" style="font-size:2.5rem;color:var(--text-muted)"></i>
+            <p class="mt-3" style="color:var(--text-muted);font-size:0.85rem">Tidak ada data ditemukan</p>
+        </div>
+    </div>
+</div>
+
+<!-- Low Stock Alert -->
+<div class="card mt-3" id="low-stock-card" style="display:none">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-exclamation-triangle fa-sm" style="color:var(--warning)"></i> Alert Stok Rendah</span>
+        <span class="badge-glass" id="low-stock-count">0</span>
+    </div>
+    <div class="card-body p-0">
+        <div id="low-stock-container" style="display:none">
+            <table class="table table-hover table-sm mb-0">
+                <thead><tr><th>Barang</th><th>Divisi</th><th class="text-end">Stok</th><th>Status</th></tr></thead>
+                <tbody id="low-stock-tbody"></tbody>
+            </table>
+        </div>
+        <div id="no-low-stock" class="text-center py-3" style="color:var(--text-muted);font-size:0.85rem">
+            <i class="fas fa-check-circle" style="color:var(--success)"></i> Semua stok dalam kondisi baik
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let snapshotReady = false;
+    let pollTimer = null;
+
+    // ──────────── Init ────────────
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('filter-search').focus();
+        checkSnapshotStatus();
+    });
+
+    document.getElementById('filter-search').addEventListener('keydown', e => {
+        if (e.key === 'Enter') doSearch();
+    });
+
+    // ──────────── Snapshot Management ────────────,
+    function checkSnapshotStatus() {
+        fetch('/stok/snapshot/status')
+            .then(r => r.json())
+            .then(data => {
+                updateSnapshotBanner(data);
+
+                if (data.state === 'ready' && data.has_snapshot) {
+                    snapshotReady = true;
+                    stopPolling();
+                } else if (data.state === 'empty') {
+                    snapshotReady = false;
+                    document.getElementById('welcome-text').textContent =
+                        'Klik "Refresh Data" untuk memuat data dari server terlebih dahulu';
+                } else if (['starting', 'fetching', 'writing'].includes(data.state)) {
+                    snapshotReady = false;
+                    startPolling();
+                }
+            });
+    }
+
+    function refreshSnapshot() {
+        const btn = document.getElementById('btn-refresh');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin fa-sm"></i> Memuat...';
+
+        const tanggal = document.getElementById('filter-tanggal').value;
+        fetch(`/stok/snapshot/refresh?tanggal=${tanggal}`, { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'already_running') {
+                    showAlert('warning', 'Refresh sudah berjalan');
+                }
+                startPolling();
+            })
+            .catch(err => showAlert('error', 'Error: ' + err.message))
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-sync-alt fa-sm"></i> Full Refresh';
+            });
+    }
+
+    function deltaRefresh() {
+        const btn = document.getElementById('btn-delta');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin fa-sm"></i> Updating...';
+
+        const tanggal = document.getElementById('filter-tanggal').value;
+        fetch(`/stok/snapshot/delta?tanggal=${tanggal}`, { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'already_running') {
+                    showAlert('warning', 'Refresh sedang berjalan');
+                }
+                startPolling();
+            })
+            .catch(err => showAlert('error', 'Error: ' + err.message))
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-bolt fa-sm"></i> Quick Update';
+            });
+    }
+
+    function cancelRefresh() {
+        fetch('/stok/snapshot/cancel', { method: 'POST' })
+            .then(r => r.json())
+            .then(() => {
+                stopPolling();
+                checkSnapshotStatus();
+            });
+    }
+
+    function startPolling() {
+        stopPolling();
+        pollTimer = setInterval(() => {
+            fetch('/stok/snapshot/status')
+                .then(r => r.json())
+                .then(data => {
+                    updateSnapshotBanner(data);
+                    if (data.state === 'ready') {
+                        snapshotReady = true;
+                        stopPolling();
+                        showAlert('success', `Snapshot selesai! ${data.mem_count || ''} item dimuat.`);
+                        document.getElementById('welcome-text').textContent =
+                            'Ketik nama atau kode barang, lalu tekan Enter';
+                    } else if (data.state === 'error' || data.state === 'cancelled') {
+                        stopPolling();
+                    }
+                });
+        }, 1500);
+    }
+
+    function stopPolling() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    }
+
+    function updateSnapshotBanner(data) {
+        const badge = document.getElementById('snapshot-badge');
+        const msg = document.getElementById('snapshot-message');
+        const progressWrap = document.getElementById('snapshot-progress-wrap');
+        const progressBar = document.getElementById('snapshot-progress-bar');
+        const cancelBtn = document.getElementById('btn-cancel');
+        const icon = document.getElementById('snapshot-icon');
+
+        msg.textContent = data.message || '';
+
+        if (['starting', 'fetching', 'writing'].includes(data.state)) {
+            badge.textContent = 'Loading...';
+            badge.style.background = 'rgba(245,158,11,0.15)';
+            badge.style.color = 'var(--warning)';
+            progressWrap.style.display = 'block';
+            progressBar.style.width = (data.progress || 0) + '%';
+            cancelBtn.style.display = 'inline-flex';
+            icon.innerHTML = '<i class="fas fa-spinner fa-spin" style="color:var(--warning)"></i>';
+            icon.style.background = 'rgba(245,158,11,0.1)';
+        } else if (data.state === 'ready') {
+            const info = data.snapshot_info || {};
+            badge.textContent = `${data.mem_count || info.row_count || 0} items`;
+            badge.style.background = 'rgba(16,185,129,0.15)';
+            badge.style.color = 'var(--success)';
+            progressWrap.style.display = 'none';
+            cancelBtn.style.display = 'none';
+            icon.innerHTML = '<i class="fas fa-check-circle" style="color:var(--success)"></i>';
+            icon.style.background = 'rgba(16,185,129,0.1)';
+            // Show snapshot date
+            const tglBadge = document.getElementById('snapshot-tanggal-badge');
+            const tglText = document.getElementById('snapshot-tanggal-text');
+            if (info.tanggal) {
+                tglBadge.style.display = 'inline-flex';
+                tglText.textContent = new Date(info.tanggal).toLocaleDateString('id-ID', {day:'2-digit',month:'short',year:'numeric'});
+            }
+            if (info.last_refresh) {
+                msg.textContent = `Terakhir diperbarui: ${new Date(info.last_refresh).toLocaleString('id-ID')} · ${data.mem_count || info.row_count || 0} item`;
+            }
+        } else if (data.state === 'error') {
+            badge.textContent = 'Error';
+            badge.style.background = 'rgba(239,68,68,0.15)';
+            badge.style.color = 'var(--danger)';
+            progressWrap.style.display = 'none';
+            cancelBtn.style.display = 'none';
+            icon.innerHTML = '<i class="fas fa-exclamation-triangle" style="color:var(--danger)"></i>';
+            icon.style.background = 'rgba(239,68,68,0.1)';
+        } else {
+            badge.textContent = 'No Data';
+            badge.style.background = 'rgba(148,163,184,0.15)';
+            badge.style.color = 'var(--text-muted)';
+            progressWrap.style.display = 'none';
+            cancelBtn.style.display = 'none';
+        }
+    }
+
+    // ──────────── Search (instant from cache) ────────────
+
+    function doSearch() {
+        const searchVal = document.getElementById('filter-search').value;
+        if (!searchVal) {
+            showAlert('error', 'Ketik kata kunci pencarian terlebih dahulu');
+            document.getElementById('filter-search').focus();
+            return;
+        }
+
+        if (!snapshotReady) {
+            showAlert('error', 'Snapshot belum siap. Klik "Refresh Data" terlebih dahulu.');
+            return;
+        }
+
+        const searchType = document.getElementById('filter-type').value;
+        const divisi = document.getElementById('filter-divisi').value;
+        const minStok = document.getElementById('filter-min-stok').value;
+
+        // Show data sections
+        document.getElementById('welcome-state').style.display = 'none';
+        document.getElementById('stats-container').style.display = 'flex';
+        document.getElementById('data-card').style.display = 'block';
+        document.getElementById('low-stock-card').style.display = 'block';
+
+        const searchWithWild = searchVal.includes('%') ? searchVal : searchVal + '%';
+
+        const url = new URL('/stok/monitoring', window.location.origin);
+        if (divisi) url.searchParams.append('divisi', divisi);
+        if (searchType === 'kode') {
+            url.searchParams.append('search_kode', searchWithWild);
+        } else {
+            url.searchParams.append('search_nama', searchWithWild);
+        }
+
+        const t0 = performance.now();
+
+        fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                const elapsed = Math.round(performance.now() - t0);
+
+                // Show speed badges
+                document.getElementById('search-time').style.display = 'inline-flex';
+                document.getElementById('search-ms').textContent = elapsed;
+                document.getElementById('search-source').style.display = 'inline-flex';
+                document.getElementById('source-text').textContent = data.source || 'cache';
+
+                if (data.status === 'success') {
+                    renderTable(data.data, data.summary);
+
+                    // Load divisi filter if empty
+                    if (document.getElementById('filter-divisi').options.length <= 1 && data.summary?.divisi_list) {
+                        data.summary.divisi_list.forEach(d => {
+                            const opt = document.createElement('option');
+                            opt.value = d; opt.textContent = d;
+                            document.getElementById('filter-divisi').appendChild(opt);
+                        });
+                    }
+
+                    // Low stock
+                    loadLowStockAlert(searchType, searchWithWild, minStok);
+                } else if (data.status === 'no_snapshot') {
+                    showAlert('error', data.message);
+                } else {
+                    showAlert('error', data.message || 'Gagal memuat data');
+                }
+            })
+            .catch(err => showAlert('error', 'Error: ' + err.message));
+    }
+
+    // ──────────── Render ────────────
+
+    let currentData = [];
+    let currentSortKey = null;
+    let currentSortDir = 'asc';
+
+    function renderTable(data, summary) {
+        const tbody = document.getElementById('data-tbody');
+        const tc = document.getElementById('table-container');
+        const es = document.getElementById('empty-state');
+
+        currentData = data || [];
+
+        if (!data || data.length === 0) {
+            tc.style.display = 'none';
+            es.style.display = 'block';
+            updateStats({total_items:0,divisi_count:0,total_nominal:0,avg_stok:0});
+            document.getElementById('row-count').textContent = '0 baris';
+            return;
+        }
+
+        renderRows(data);
+        tc.style.display = 'block';
+        es.style.display = 'none';
+        document.getElementById('row-count').textContent = data.length + ' baris';
+        updateStats(summary);
+
+        // Init sort handlers (once)
+        initSortHandlers();
+        // Init column toggle handlers (once)
+        initColumnToggles();
+    }
+
+    function renderRows(data) {
+        const tbody = document.getElementById('data-tbody');
+        // Get hidden columns
+        const hidden = getHiddenCols();
+
+        tbody.innerHTML = '';
+        data.forEach(row => {
+            const stok = row['Stok Akhir'] || 0;
+            const cls = stok < 1 ? 'stock-danger' : stok < 10 ? 'stock-warning' : 'stock-ok';
+
+            const tr = document.createElement('tr');
+            const cells = [
+                `<td data-col="0">${row['Kode Divisi']}</td>`,
+                `<td data-col="1">${row['Divisi']}</td>`,
+                `<td data-col="2"><span class="badge-glass">${row['Kode Barang']}</span></td>`,
+                `<td data-col="3" style="font-weight:600">${row['Barang']}</td>`,
+                `<td data-col="4" style="color:var(--text-secondary);font-size:0.8rem">${row['Kategori']}</td>`,
+                `<td data-col="5" style="color:var(--text-secondary);font-size:0.8rem">${row['Merk']}</td>`,
+                `<td data-col="6" style="color:var(--text-secondary);font-size:0.8rem">${row['Model'] || ''}</td>`,
+                `<td data-col="7" style="color:var(--text-secondary);font-size:0.8rem">${row['Warna'] || ''}</td>`,
+                `<td data-col="8" style="color:var(--text-secondary);font-size:0.8rem">${row['Ukuran'] || ''}</td>`,
+                `<td data-col="9" class="text-end ${cls}">${stok}</td>`,
+                `<td data-col="10" class="text-end">${fmt(row['Harga Average'])}</td>`,
+                `<td data-col="11" class="text-end">${fmt(row['Harga Jual'])}</td>`,
+                `<td data-col="12" class="text-end" style="font-weight:600;color:var(--warning)">${fmt(row['Nominal'])}</td>`,
+                `<td data-col="13" class="text-end">${fmt(row['Harga Beli Akhir'])}</td>`,
+            ];
+            tr.innerHTML = cells.join('');
+
+            // Apply hidden columns
+            hidden.forEach(col => {
+                const td = tr.querySelector(`[data-col="${col}"]`);
+                if (td) td.style.display = 'none';
+            });
+
+            tbody.appendChild(tr);
+        });
+    }
+
+    // ──────────── Sort ────────────
+
+    let sortInitialized = false;
+    function initSortHandlers() {
+        if (sortInitialized) return;
+        sortInitialized = true;
+
+        document.querySelectorAll('th.sortable').forEach(th => {
+            th.style.cursor = 'pointer';
+            th.style.userSelect = 'none';
+            th.addEventListener('click', () => {
+                const key = th.dataset.key;
+                const isNum = th.dataset.type === 'num';
+
+                if (currentSortKey === key) {
+                    currentSortDir = currentSortDir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    currentSortKey = key;
+                    currentSortDir = 'asc';
+                }
+
+                // Sort data
+                currentData.sort((a, b) => {
+                    let va = a[key], vb = b[key];
+                    if (isNum) {
+                        va = parseFloat(va) || 0;
+                        vb = parseFloat(vb) || 0;
+                        return currentSortDir === 'asc' ? va - vb : vb - va;
+                    } else {
+                        va = (va || '').toString().toLowerCase();
+                        vb = (vb || '').toString().toLowerCase();
+                        if (va < vb) return currentSortDir === 'asc' ? -1 : 1;
+                        if (va > vb) return currentSortDir === 'asc' ? 1 : -1;
+                        return 0;
+                    }
+                });
+
+                // Update sort icons
+                document.querySelectorAll('th.sortable i').forEach(i => {
+                    i.className = 'fas fa-sort fa-xs';
+                    i.style.opacity = '0.3';
+                });
+                const icon = th.querySelector('i');
+                icon.className = `fas fa-sort-${currentSortDir === 'asc' ? 'up' : 'down'} fa-xs`;
+                icon.style.opacity = '1';
+                icon.style.color = 'var(--accent-light)';
+
+                // Apply filter if any
+                const filterVal = document.getElementById('result-filter').value;
+                if (filterVal) {
+                    filterResults();
+                } else {
+                    renderRows(currentData);
+                }
+            });
+        });
+    }
+
+    // ──────────── Filter results ────────────
+
+    function filterResults() {
+        const val = document.getElementById('result-filter').value.toLowerCase().trim();
+        if (!val) {
+            renderRows(currentData);
+            document.getElementById('row-count').textContent = currentData.length + ' baris';
+            return;
+        }
+
+        const filtered = currentData.filter(row => {
+            return Object.values(row).some(v =>
+                (v || '').toString().toLowerCase().includes(val)
+            );
+        });
+        renderRows(filtered);
+        document.getElementById('row-count').textContent = `${filtered.length} / ${currentData.length} baris`;
+    }
+
+    // ──────────── Column toggle ────────────
+
+    let colTogglesInitialized = false;
+    function initColumnToggles() {
+        if (colTogglesInitialized) return;
+        colTogglesInitialized = true;
+
+        document.querySelectorAll('#col-toggles input[type="checkbox"]').forEach(cb => {
+            cb.addEventListener('change', () => {
+                const col = cb.dataset.col;
+                const show = cb.checked;
+
+                // Toggle header
+                const th = document.querySelector(`th[data-col="${col}"]`);
+                if (th) th.style.display = show ? '' : 'none';
+
+                // Toggle all cells in that column
+                document.querySelectorAll(`td[data-col="${col}"]`).forEach(td => {
+                    td.style.display = show ? '' : 'none';
+                });
+            });
+        });
+    }
+
+    function getHiddenCols() {
+        const hidden = [];
+        document.querySelectorAll('#col-toggles input[type="checkbox"]').forEach(cb => {
+            if (!cb.checked) hidden.push(cb.dataset.col);
+        });
+        return hidden;
+    }
+
+    function loadLowStockAlert(searchType, searchVal, minStok) {
+        const url = new URL('/stok/low-stock-alert', window.location.origin);
+        url.searchParams.append('min_stok', minStok);
+        if (searchType === 'kode') url.searchParams.append('search_kode', searchVal);
+        else url.searchParams.append('search_nama', searchVal);
+
+        fetch(url).then(r => r.json()).then(data => { if (data.status === 'success') renderLowStock(data.data); });
+    }
+
+    function renderLowStock(data) {
+        const c = document.getElementById('low-stock-container');
+        const n = document.getElementById('no-low-stock');
+        const tbody = document.getElementById('low-stock-tbody');
+
+        if (!data || data.length === 0) {
+            c.style.display = 'none'; n.style.display = 'block';
+            document.getElementById('low-stock-count').textContent = '0';
+            return;
+        }
+
+        tbody.innerHTML = '';
+        data.forEach(row => {
+            const s = row['Stok Akhir'];
+            const cls = s === 0 ? 'stock-danger' : 'stock-warning';
+            const label = s === 0 ? 'Habis' : 'Rendah';
+            const bg = s === 0 ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)';
+            const col = s === 0 ? 'var(--danger)' : 'var(--warning)';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="font-weight:600">${row['Barang']}</td>
+                <td style="color:var(--text-secondary)">${row['Divisi']}</td>
+                <td class="text-end ${cls}">${s}</td>
+                <td><span style="background:${bg};color:${col};padding:0.15rem 0.5rem;border-radius:6px;font-size:0.7rem;font-weight:600">${label}</span></td>
+            `;
+            tbody.appendChild(tr);
+        });
+        c.style.display = 'block'; n.style.display = 'none';
+        document.getElementById('low-stock-count').textContent = data.length;
+    }
+
+    function updateStats(s) {
+        document.getElementById('stat-items').textContent = s.total_items || 0;
+        document.getElementById('stat-divisi').textContent = s.divisi_count || 0;
+        document.getElementById('stat-nominal').textContent = fmt(s.total_nominal || 0);
+        document.getElementById('stat-avg').textContent = (s.avg_stok || 0).toFixed(1);
+    }
+
+    function fmt(v) {
+        return new Intl.NumberFormat('id-ID', {style:'currency',currency:'IDR',minimumFractionDigits:0}).format(v||0);
+    }
+
+    function showAlert(type, msg) {
+        const c = document.getElementById('alert-container');
+        const cls = type === 'error' ? 'danger' : type === 'warning' ? 'warning' : 'success';
+        c.innerHTML = `<div class="alert alert-glass alert-${cls} alert-dismissible fade show"><i class="fas fa-${type==='error'?'exclamation-circle':type==='warning'?'exclamation-triangle':'check-circle'}"></i> ${msg}<button class="btn-close" data-bs-dismiss="alert"></button></div>`;
+        if (type !== 'error') setTimeout(() => { const a = c.querySelector('.alert'); if(a) a.remove(); }, 4000);
+    }
+</script>
+{% endblock %}

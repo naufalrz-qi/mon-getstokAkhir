@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% block title %}Manage Servers - StokMonitor{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center fade-up">
+    <div class="col-lg-10">
+        <!-- Header -->
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+            <div>
+                <h3 style="font-weight:800;letter-spacing:-0.03em;margin-bottom:0.25rem">
+                    <i class="fas fa-sliders-h" style="color:var(--accent)"></i> Server Management
+                </h3>
+                <p style="color:var(--text-muted);font-size:0.85rem;margin:0">Kelola koneksi database server</p>
+            </div>
+            <button class="btn btn-accent btn-sm mt-2 mt-md-0" onclick="openServerModal()">
+                <i class="fas fa-plus fa-sm"></i> Tambah Server
+            </button>
+        </div>
+
+        <div id="alert-container"></div>
+
+        <!-- Server Table -->
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Key</th>
+                                <th>Nama Server</th>
+                                <th>Host / IP</th>
+                                <th>Port</th>
+                                <th>Database</th>
+                                <th class="text-end">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="server-table-body">
+                            <tr>
+                                <td colspan="6" class="text-center py-4">
+                                    <div class="loader mx-auto"></div>
+                                    <p class="mt-2 mb-0" style="color:var(--text-muted);font-size:0.85rem">Memuat...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="serverModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title" id="modalTitle" style="font-weight:700">Tambah Server</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="serverForm">
+                    <input type="hidden" id="isEdit" value="0">
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Identitas</label>
+                        <div class="row g-2">
+                            <div class="col-5">
+                                <input type="text" class="form-control form-control-sm" id="key" placeholder="Key (server_1)" required>
+                            </div>
+                            <div class="col-7">
+                                <input type="text" class="form-control form-control-sm" id="name" placeholder="Nama Tampilan" required>
+                            </div>
+                        </div>
+                        <small style="color:var(--text-muted);font-size:0.7rem">Key = ID unik, tidak bisa diubah</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Koneksi</label>
+                        <div class="row g-2 mb-2">
+                            <div class="col-8">
+                                <input type="text" class="form-control form-control-sm" id="host" placeholder="Host / IP" required>
+                            </div>
+                            <div class="col-4">
+                                <input type="number" class="form-control form-control-sm" id="port" value="1433" required>
+                            </div>
+                        </div>
+                        <input type="text" class="form-control form-control-sm" id="database" placeholder="Database" value="POS_DB" required>
+                    </div>
+
+                    <div>
+                        <label class="form-label">Kredensial</label>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <input type="text" class="form-control form-control-sm" id="username" placeholder="Username" value="sa" required>
+                            </div>
+                            <div class="col-6">
+                                <input type="password" class="form-control form-control-sm" id="password" placeholder="Password" required>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-glass btn-sm" data-bs-dismiss="modal">Batal</button>
+                <button type="button" class="btn btn-accent btn-sm" id="btnSave" onclick="saveServer()">
+                    <i class="fas fa-save fa-sm"></i> Simpan
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const serverModal = new bootstrap.Modal(document.getElementById('serverModal'));
+    let currentServers = {};
+
+    document.addEventListener('DOMContentLoaded', loadServers);
+
+    function loadServers() {
+        fetch('/stok/api/servers')
+            .then(r => r.json())
+            .then(res => {
+                if (res.status === 'success') {
+                    currentServers = res.data;
+                    renderTable(res.data);
+                } else {
+                    showAlert('error', 'Gagal memuat: ' + res.message);
+                }
+            })
+            .catch(() => showAlert('error', 'Kesalahan sistem'));
+    }
+
+    function renderTable(servers) {
+        const tbody = document.getElementById('server-table-body');
+        tbody.innerHTML = '';
+        const keys = Object.keys(servers);
+        
+        if (keys.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4" style="color:var(--text-muted)">Belum ada server</td></tr>';
+            return;
+        }
+
+        keys.forEach(key => {
+            const s = servers[key];
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><span class="badge-glass">${key}</span></td>
+                <td style="font-weight:600;color:var(--accent-light)">${s.name}</td>
+                <td><i class="fas fa-globe fa-xs" style="color:var(--text-muted)"></i> ${s.host}</td>
+                <td>${s.port}</td>
+                <td><i class="fas fa-database fa-xs" style="color:var(--text-muted)"></i> ${s.database}</td>
+                <td class="text-end">
+                    <button class="btn btn-glass btn-sm me-1" onclick="editServer('${key}')"><i class="fas fa-edit fa-xs"></i></button>
+                    <button class="btn btn-sm" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:var(--danger)" onclick="deleteServer('${key}','${s.name}')"><i class="fas fa-trash fa-xs"></i></button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function openServerModal() {
+        document.getElementById('serverForm').reset();
+        document.getElementById('isEdit').value = '0';
+        document.getElementById('key').readOnly = false;
+        document.getElementById('modalTitle').textContent = 'Tambah Server';
+        serverModal.show();
+    }
+
+    function editServer(key) {
+        const s = currentServers[key]; if(!s) return;
+        document.getElementById('isEdit').value = '1';
+        document.getElementById('key').value = key;
+        document.getElementById('key').readOnly = true;
+        document.getElementById('name').value = s.name;
+        document.getElementById('host').value = s.host;
+        document.getElementById('port').value = s.port;
+        document.getElementById('database').value = s.database;
+        document.getElementById('username').value = s.username;
+        document.getElementById('password').value = s.password;
+        document.getElementById('modalTitle').textContent = 'Edit - ' + s.name;
+        serverModal.show();
+    }
+
+    function saveServer() {
+        const isEdit = document.getElementById('isEdit').value === '1';
+        const key = document.getElementById('key').value.trim();
+        const data = {
+            key, name: document.getElementById('name').value.trim(),
+            host: document.getElementById('host').value.trim(),
+            port: document.getElementById('port').value.trim(),
+            database: document.getElementById('database').value.trim(),
+            username: document.getElementById('username').value.trim(),
+            password: document.getElementById('password').value
+        };
+
+        if(!data.key || !data.name || !data.host) { alert('Lengkapi field wajib!'); return; }
+
+        const btn = document.getElementById('btnSave');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin fa-sm"></i>';
+
+        fetch(isEdit ? `/stok/api/servers/${key}` : '/stok/api/servers', {
+            method: isEdit ? 'PUT' : 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (res.status === 'success') {
+                serverModal.hide();
+                showAlert('success', res.message);
+                loadServers();
+            } else { alert('Error: ' + res.message); }
+        })
+        .catch(e => alert('Error: ' + e))
+        .finally(() => { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save fa-sm"></i> Simpan'; });
+    }
+
+    function deleteServer(key, name) {
+        if(!confirm(`Hapus server '${name}'?`)) return;
+        fetch(`/stok/api/servers/${key}`, {method:'DELETE'})
+            .then(r => r.json())
+            .then(res => {
+                if (res.status === 'success') { showAlert('success', res.message); loadServers(); }
+                else showAlert('error', res.message);
+            })
+            .catch(() => showAlert('error', 'Gagal menghapus'));
+    }
+
+    function showAlert(type, msg) {
+        const c = document.getElementById('alert-container');
+        c.innerHTML = `<div class="alert alert-glass alert-${type==='error'?'danger':'success'} alert-dismissible fade show"><i class="fas fa-${type==='error'?'exclamation-circle':'check-circle'}"></i> ${msg}<button class="btn-close" data-bs-dismiss="alert"></button></div>`;
+        if (type === 'success') setTimeout(() => { const a = c.querySelector('.alert'); if(a) a.remove(); }, 3000);
+    }
+</script>
+{% endblock %}

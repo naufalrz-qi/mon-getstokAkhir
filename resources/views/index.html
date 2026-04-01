@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}Pilih Server - StokMonitor{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center fade-up">
+    <div class="col-lg-7">
+        <!-- Hero -->
+        <div class="text-center mb-5 pt-3">
+            <div style="width:72px;height:72px;margin:0 auto 1.25rem;background:linear-gradient(135deg,var(--accent),#4f46e5);border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:1.75rem">
+                <i class="fas fa-server" style="color:white"></i>
+            </div>
+            <h2 style="font-weight:800;letter-spacing:-0.03em;margin-bottom:0.5rem">Pilih Server Database</h2>
+            <p style="color:var(--text-secondary);font-size:0.9rem">Hubungkan ke server POS untuk mulai monitoring stok</p>
+        </div>
+
+        <div id="alert-container"></div>
+
+        <!-- Server Cards -->
+        <div class="row g-3" id="server-list-container">
+            <div class="text-center py-5">
+                <div class="loader mx-auto"></div>
+                <p class="mt-3" style="color:var(--text-muted);font-size:0.85rem">Memuat server...</p>
+            </div>
+        </div>
+
+        <!-- Info -->
+        <div class="glass-card mt-4 p-3" style="font-size:0.8rem;color:var(--text-muted)">
+            <i class="fas fa-info-circle" style="color:var(--accent)"></i>
+            Query teroptimasi &middot; Non-blocking &middot; NOLOCK read
+        </div>
+    </div>
+</div>
+
+<template id="server-card-template">
+    <div class="col-md-6">
+        <div class="glass-card server-card p-4" style="cursor:pointer">
+            <div class="d-flex align-items-start gap-3">
+                <div style="width:44px;height:44px;border-radius:12px;background:var(--accent-glow);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                    <i class="fas fa-database" style="color:var(--accent-light)"></i>
+                </div>
+                <div class="flex-grow-1">
+                    <h6 class="mb-1 server-name" style="font-weight:700"></h6>
+                    <p class="mb-2 server-host" style="font-size:0.8rem;color:var(--text-muted);margin:0"></p>
+                    <button class="btn-accent btn btn-sm select-server-btn w-100 mt-2">
+                        <i class="fas fa-plug fa-sm"></i> Hubungkan
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', loadServerList);
+
+    function loadServerList() {
+        fetch('/stok/server-list')
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success' && data.servers.length > 0) {
+                    renderServers(data.servers);
+                } else {
+                    showAlert('error', 'Tidak ada server tersedia');
+                }
+            })
+            .catch(() => showAlert('error', 'Gagal memuat server'));
+    }
+
+    function renderServers(servers) {
+        const container = document.getElementById('server-list-container');
+        const template = document.getElementById('server-card-template');
+        container.innerHTML = '';
+
+        servers.forEach((server, i) => {
+            const clone = template.content.cloneNode(true);
+            clone.querySelector('.server-name').textContent = server.name;
+            clone.querySelector('.server-host').textContent = server.host;
+            
+            const card = clone.querySelector('.glass-card');
+            card.style.animationDelay = `${i * 0.08}s`;
+            card.classList.add('fade-up');
+            
+            clone.querySelector('.select-server-btn').addEventListener('click', e => {
+                e.preventDefault();
+                selectServer(server.key, e.target.closest('.select-server-btn'));
+            });
+
+            container.appendChild(clone);
+        });
+    }
+
+    function selectServer(key, btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menghubungkan...';
+
+        fetch('/stok/select-server', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({server_key: key})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success') {
+                showAlert('success', data.message);
+                setTimeout(() => window.location.href = '/stok/', 800);
+            } else {
+                showAlert('error', data.message);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-plug fa-sm"></i> Hubungkan';
+            }
+        })
+        .catch(() => {
+            showAlert('error', 'Koneksi gagal');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-plug fa-sm"></i> Hubungkan';
+        });
+    }
+
+    function showAlert(type, msg) {
+        const c = document.getElementById('alert-container');
+        const cls = type === 'error' ? 'alert-danger' : 'alert-success';
+        c.innerHTML = `<div class="alert alert-glass ${cls} alert-dismissible fade show"><i class="fas fa-${type==='error'?'exclamation-circle':'check-circle'}"></i> ${msg}<button class="btn-close" data-bs-dismiss="alert"></button></div>`;
+        if (type === 'success') setTimeout(() => { const a = c.querySelector('.alert'); if(a) a.remove(); }, 3000);
+    }
+</script>
+{% endblock %}

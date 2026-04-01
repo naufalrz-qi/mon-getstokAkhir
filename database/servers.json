@@ -1,0 +1,18 @@
+{
+    "localhost": {
+        "name": "local",
+        "host": "localhost",
+        "port": 1433,
+        "database": "SOLID_SIM",
+        "username": "sa",
+        "password": "12qwaszx#DB"
+    },
+    "server-lotim": {
+        "name": "LOTIM",
+        "host": "server-lotim",
+        "port": 1433,
+        "database": "SOLID_SIM",
+        "username": "sa",
+        "password": "Getwin2st"
+    }
+}
