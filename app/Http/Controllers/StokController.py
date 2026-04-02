@@ -1,7 +1,11 @@
 from datetime import datetime
 from app.Models.Database import db_manager
 from app.Models.SnapshotManager import SnapshotManager
-from flask import request, jsonify, session, render_template
+from io import BytesIO
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment
+from flask import request, jsonify, session, render_template, send_file
+
 
 
 class StokController:
@@ -177,6 +181,81 @@ class StokController:
                 'row_count': len(low_stock),
                 'threshold': min_stok
             })
+
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def export_xlsx():
+        """API: Export search result as XLSX file"""
+        try:
+            server_key = session.get('selected_server')
+            if not server_key:
+                return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
+
+            search_kode = request.args.get('search_kode')
+            search_nama = request.args.get('search_nama')
+            divisi = request.args.get('divisi')
+
+            result = SnapshotManager.search(server_key, search_kode, search_nama, divisi)
+            if result['status'] != 'success':
+                return jsonify(result), 400
+
+            data = result['data']
+            
+            # Create workbook
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Stok Monitoring"
+
+            # Headers
+            headers = [
+                'Kode Divisi', 'Divisi', 'Kode Barang', 'Barang', 'Kategori', 
+                'Merk', 'Model', 'Warna', 'Ukuran', 'Stok Akhir', 
+                'Harga Average', 'Harga Jual', 'Nominal', 'Harga Beli Akhir'
+            ]
+            ws.append(headers)
+
+            # Style headers
+            for cell in ws[1]:
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal='center')
+
+            # Data rows
+            for row in data:
+                ws.append([
+                    row.get('Kode Divisi'), row.get('Divisi'), row.get('Kode Barang'), 
+                    row.get('Barang'), row.get('Kategori'), row.get('Merk'), 
+                    row.get('Model'), row.get('Warna'), row.get('Ukuran'), 
+                    row.get('Stok Akhir'), row.get('Harga Average'), 
+                    row.get('Harga Jual'), row.get('Nominal'), row.get('Harga Beli Akhir')
+                ])
+
+            # Auto-size columns
+            for col in ws.columns:
+                max_length = 0
+                column = col[0].column_letter
+                for cell in col:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = (max_length + 2)
+                ws.column_dimensions[column].width = adjusted_width
+
+            # Save to buffer
+            output = BytesIO()
+            wb.save(output)
+            output.seek(0)
+
+            filename = f"stok_monitoring_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            return send_file(
+                output, 
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True, 
+                download_name=filename
+            )
 
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500

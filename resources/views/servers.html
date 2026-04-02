@@ -120,8 +120,12 @@
 
     function loadServers() {
         fetch('/stok/api/servers')
-            .then(r => r.json())
+            .then(r => {
+                if (r.status === 401) { window.location.href = '/auth/login'; return; }
+                return r.json();
+            })
             .then(res => {
+                if (!res) return;
                 if (res.status === 'success') {
                     currentServers = res.data;
                     renderTable(res.data);
@@ -206,8 +210,12 @@
             headers: {'Content-Type':'application/json'},
             body: JSON.stringify(data)
         })
-        .then(r => r.json())
+        .then(r => {
+            if (r.status === 401) { window.location.href = '/auth/login'; return; }
+            return r.json();
+        })
         .then(res => {
+            if (!res) return;
             if (res.status === 'success') {
                 serverModal.hide();
                 showAlert('success', res.message);
@@ -221,8 +229,12 @@
     function deleteServer(key, name) {
         if(!confirm(`Hapus server '${name}'?`)) return;
         fetch(`/stok/api/servers/${key}`, {method:'DELETE'})
-            .then(r => r.json())
+            .then(r => {
+                if (r.status === 401) { window.location.href = '/auth/login'; return; }
+                return r.json();
+            })
             .then(res => {
+                if (!res) return;
                 if (res.status === 'success') { showAlert('success', res.message); loadServers(); }
                 else showAlert('error', res.message);
             })
