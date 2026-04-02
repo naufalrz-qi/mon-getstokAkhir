@@ -149,6 +149,10 @@
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <span><i class="fas fa-table fa-sm"></i> Hasil Pencarian</span>
         <div class="d-flex gap-2 align-items-center">
+            <!-- Export Button -->
+            <button class="btn btn-glass btn-sm" onclick="exportXlsx()" id="btn-export" style="display:none; font-size: 0.7rem; color: #10B981; border-color: rgba(16, 185, 129, 0.2);">
+                <i class="fas fa-file-excel fa-xs"></i> Export
+            </button>
             <!-- Result filter -->
             <input type="text" id="result-filter" class="form-control form-control-sm" placeholder="Filter hasil..." style="width:200px;background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.1);color:var(--text-primary);font-size:0.75rem" oninput="filterResults()">
             <!-- Column toggle -->
@@ -417,6 +421,7 @@
         document.getElementById('stats-container').style.display = 'flex';
         document.getElementById('data-card').style.display = 'block';
         document.getElementById('low-stock-card').style.display = 'block';
+        document.getElementById('btn-export').style.display = 'inline-flex';
 
         const searchWithWild = searchVal.includes('%') ? searchVal : searchVal + '%';
 
@@ -701,6 +706,24 @@
         const cls = type === 'error' ? 'danger' : type === 'warning' ? 'warning' : 'success';
         c.innerHTML = `<div class="alert alert-glass alert-${cls} alert-dismissible fade show"><i class="fas fa-${type==='error'?'exclamation-circle':type==='warning'?'exclamation-triangle':'check-circle'}"></i> ${msg}<button class="btn-close" data-bs-dismiss="alert"></button></div>`;
         if (type !== 'error') setTimeout(() => { const a = c.querySelector('.alert'); if(a) a.remove(); }, 4000);
+    }
+
+    function exportXlsx() {
+        const searchVal = document.getElementById('filter-search').value;
+        const searchType = document.getElementById('filter-type').value;
+        const divisi = document.getElementById('filter-divisi').value;
+
+        const url = new URL('/stok/export/xlsx', window.location.origin);
+        if (divisi) url.searchParams.append('divisi', divisi);
+        
+        const searchWithWild = searchVal.includes('%') ? searchVal : searchVal + '%';
+        if (searchType === 'kode') {
+            url.searchParams.append('search_kode', searchWithWild);
+        } else {
+            url.searchParams.append('search_nama', searchWithWild);
+        }
+
+        window.location.href = url.href;
     }
 </script>
 {% endblock %}

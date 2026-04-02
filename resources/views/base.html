@@ -454,6 +454,13 @@
                             <i class="fas fa-sliders-h fa-sm"></i> Settings
                         </a>
                     </li>
+                    {% if session.get('is_admin') %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="/auth/logout" style="color:var(--danger) !important">
+                            <i class="fas fa-sign-out-alt fa-sm"></i> Logout
+                        </a>
+                    </li>
+                    {% endif %}
                 </ul>
                 <span id="current-server-badge" class="server-badge ms-3">
                     <span class="pulse"></span>

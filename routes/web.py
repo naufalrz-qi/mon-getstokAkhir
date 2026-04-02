@@ -1,5 +1,6 @@
 from app.Http.Controllers.StokController import StokController
 from app.Http.Controllers.ServerController import ServerController
+from app.Http.Controllers.AuthController import AuthController
 
 class Route:
     """
@@ -43,7 +44,14 @@ def register_routes(app):
     Route.get('/', StokController.index_page)
     Route.get('/stok/index', StokController.index_page)
     Route.get('/stok/', StokController.monitoring_page)
-    Route.get('/stok/servers', ServerController.servers_page)
+    Route.get('/stok/servers', AuthController.admin_required(ServerController.servers_page))
+
+    # ==========================================================
+    # API Routes : Authentication
+    # ==========================================================
+    Route.get('/auth/login', AuthController.login_page)
+    Route.post('/auth/login', AuthController.login)
+    Route.get('/auth/logout', AuthController.logout)
 
     # ==========================================================
     # API Routes : Server Session
@@ -64,12 +72,13 @@ def register_routes(app):
     # API Routes : Stok Data (reads from local snapshot)
     # ==========================================================
     Route.get('/stok/monitoring', StokController.fetch_monitoring_data)
+    Route.get('/stok/export/xlsx', StokController.export_xlsx)
     Route.get('/stok/low-stock-alert', StokController.fetch_low_stock_alert)
 
     # ==========================================================
     # API Routes : Server Management CRUD
     # ==========================================================
     Route.get('/stok/api/servers', ServerController.get_all_servers)
-    Route.post('/stok/api/servers', ServerController.create_server)
-    Route.put('/stok/api/servers/<server_key>', ServerController.update_server)
-    Route.delete('/stok/api/servers/<server_key>', ServerController.delete_server)
+    Route.post('/stok/api/servers', AuthController.admin_required(ServerController.create_server))
+    Route.put('/stok/api/servers/<server_key>', AuthController.admin_required(ServerController.update_server))
+    Route.delete('/stok/api/servers/<server_key>', AuthController.admin_required(ServerController.delete_server))
