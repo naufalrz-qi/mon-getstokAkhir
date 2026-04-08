@@ -44,6 +44,7 @@ def register_routes(app):
     Route.get('/', StokController.index_page)
     Route.get('/stok/index', StokController.index_page)
     Route.get('/stok/', StokController.monitoring_page)
+    Route.get('/stok/histori', StokController.histori_page)
     Route.get('/stok/servers', AuthController.admin_required(ServerController.servers_page))
 
     # ==========================================================
@@ -63,8 +64,8 @@ def register_routes(app):
     # ==========================================================
     # API Routes : Snapshot Management
     # ==========================================================
-    Route.post('/stok/snapshot/refresh', StokController.trigger_refresh)
-    Route.post('/stok/snapshot/delta', StokController.trigger_delta_refresh)
+    Route.post('/stok/snapshot/refresh', AuthController.admin_required(StokController.trigger_refresh))
+    Route.post('/stok/snapshot/delta', AuthController.admin_required(StokController.trigger_delta_refresh))
     Route.get('/stok/snapshot/status', StokController.snapshot_status)
     Route.post('/stok/snapshot/cancel', StokController.cancel_refresh)
 
@@ -72,6 +73,8 @@ def register_routes(app):
     # API Routes : Stok Data (reads from local snapshot)
     # ==========================================================
     Route.get('/stok/monitoring', StokController.fetch_monitoring_data)
+    Route.get('/stok/barang-histori', StokController.fetch_barang_histori)
+    Route.get('/stok/export/histori', StokController.export_histori_xlsx)
     Route.get('/stok/export/xlsx', StokController.export_xlsx)
     Route.get('/stok/low-stock-alert', StokController.fetch_low_stock_alert)
 

@@ -32,6 +32,14 @@ class StokController:
 
         return render_template('monitoring.html', tanggal=tanggal)
 
+    @staticmethod
+    def histori_page():
+        """HTML Page: Cek histori pergerakan barang"""
+        server_key = session.get('selected_server')
+        if not server_key:
+            return render_template('index.html')
+        return render_template('histori.html')
+
     # ──────────── Server Session APIs ────────────
 
     @staticmethod
@@ -186,6 +194,26 @@ class StokController:
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
     @staticmethod
+    def fetch_barang_histori():
+        """API: Get transaction history for one item in one division"""
+        try:
+            server_key = session.get('selected_server')
+            if not server_key:
+                return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
+
+            kd_barang = request.args.get('kd_barang')
+            kd_divisi = request.args.get('kd_divisi', '')
+
+            if not kd_barang:
+                return jsonify({'status': 'error', 'message': 'Kode barang harus diisi'}), 400
+
+            result = SnapshotManager.get_barang_histori(server_key, kd_barang, kd_divisi)
+            return jsonify(result)
+
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
     def export_xlsx():
         """API: Export search result as XLSX file"""
         try:
@@ -250,6 +278,97 @@ class StokController:
             output.seek(0)
 
             filename = f"stok_monitoring_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            return send_file(
+                output, 
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True, 
+                download_name=filename
+            )
+
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def export_histori_xlsx():
+        """API: Export transaction history as XLSX file"""
+        try:
+            server_key = session.get('selected_server')
+            if not server_key:
+                return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
+
+            kd_barang = request.args.get('kd_barang')
+            kd_divisi = request.args.get('kd_divisi', '')
+
+            if not kd_barang:
+                return jsonify({'status': 'error', 'message': 'Kode barang harus diisi'}), 400
+
+            result = SnapshotManager.get_barang_histori(server_key, kd_barang, kd_divisi)
+            if result['status'] != 'success':
+                return jsonify(result), 400
+
+            data = result['data']
+            
+            # Create workbook
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Histori Barang"
+
+            # Headers
+            headers = [
+                'Kd_Divisi', 'Divisi', 'K.Nota', 'Tanggal', 'Transaksi', 
+                'No. Transaksi', 'Kd_Barang', 'Barang', 'Debet', 'Kredit', 
+                'Kd_Satuan', 'Satuan', 'Harga', 'Saldo'
+            ]
+            ws.append(headers)
+
+            # Style headers
+            for cell in ws[1]:
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal='center')
+
+            # Data rows with running balance
+            saldo = 0
+            for row in data:
+                debet = float(row.get('Debet', 0) or 0)
+                kredit = float(row.get('Kredit', 0) or 0)
+                saldo += (debet - kredit)
+                
+                ws.append([
+                    row.get('Kd_Divisi'), 
+                    row.get('Divisi'), 
+                    row.get('K.Nota'),
+                    row.get('tanggal'), 
+                    row.get('Transaksi'), 
+                    row.get('no_transaksi'), 
+                    row.get('kd_barang'), 
+                    row.get('barang'), 
+                    debet, 
+                    kredit, 
+                    row.get('kd_satuan'), 
+                    row.get('satuan'), 
+                    row.get('harga'),
+                    saldo
+                ])
+
+            # Auto-size columns
+            for col in ws.columns:
+                max_length = 0
+                column = col[0].column_letter
+                for cell in col:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = (max_length + 2)
+                ws.column_dimensions[column].width = adjusted_width
+
+            # Save to buffer
+            output = BytesIO()
+            wb.save(output)
+            output.seek(0)
+
+            filename = f"histori_{kd_barang}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
             return send_file(
                 output, 
                 mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
