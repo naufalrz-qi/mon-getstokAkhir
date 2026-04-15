@@ -276,10 +276,19 @@
         fetch(`/stok/snapshot/refresh?tanggal=${tanggal}`, { method: 'POST' })
             .then(r => r.json())
             .then(data => {
-                if (data.status === 'already_running') {
+                if (data.status === 'error') {
+                    if (data.message.toLowerCase().includes('login')) {
+                        if(typeof showLoginModal === 'function') showLoginModal();
+                        else showAlert('error', data.message);
+                    } else {
+                        showAlert('error', data.message);
+                    }
+                } else if (data.status === 'already_running') {
                     showAlert('warning', 'Refresh sudah berjalan');
+                    startPolling();
+                } else {
+                    startPolling();
                 }
-                startPolling();
             })
             .catch(err => showAlert('error', 'Error: ' + err.message))
             .finally(() => {
@@ -297,10 +306,19 @@
         fetch(`/stok/snapshot/delta?tanggal=${tanggal}`, { method: 'POST' })
             .then(r => r.json())
             .then(data => {
-                if (data.status === 'already_running') {
+                if (data.status === 'error') {
+                    if (data.message.toLowerCase().includes('login')) {
+                        if(typeof showLoginModal === 'function') showLoginModal();
+                        else showAlert('error', data.message);
+                    } else {
+                        showAlert('error', data.message);
+                    }
+                } else if (data.status === 'already_running') {
                     showAlert('warning', 'Refresh sedang berjalan');
+                    startPolling();
+                } else {
+                    startPolling();
                 }
-                startPolling();
             })
             .catch(err => showAlert('error', 'Error: ' + err.message))
             .finally(() => {

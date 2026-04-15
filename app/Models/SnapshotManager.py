@@ -14,6 +14,7 @@ import time
 from datetime import datetime
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from decimal import Decimal
 
 
 QUERIES_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'database', 'queries')
@@ -206,10 +207,33 @@ class SnapshotManager:
                 # No changes
                 now_str = datetime.now().isoformat()
                 db_path = cls._db_path(server_key)
-                conn_db = sqlite3.connect(db_path)
-                conn_db.execute("INSERT OR REPLACE INTO snapshot_meta VALUES ('last_refresh', ?)", (now_str,))
-                conn_db.commit()
-                conn_db.close()
+                conn_db = None
+                try:
+                    conn_db = sqlite3.connect(db_path)
+                    conn_db.execute("INSERT OR REPLACE INTO snapshot_meta VALUES ('last_refresh', ?)", (now_str,))
+                    conn_db.commit()
+                except sqlite3.DatabaseError as e:
+                    if 'malformed' in str(e).lower() or 'corrupt' in str(e).lower():
+                        if conn_db:
+                            try:
+                                conn_db.close()
+                            except:
+                                pass
+                        for ext in ['', '-wal', '-shm']:
+                            try:
+                                if os.path.exists(db_path + ext):
+                                    os.remove(db_path + ext)
+                            except OSError:
+                                pass
+                        raise Exception("Database lokal korup. Silakan Refresh ulang (full refresh akan dipicu otomatis).")
+                    else:
+                        raise
+                finally:
+                    if conn_db:
+                        try:
+                            conn_db.close()
+                        except:
+                            pass
 
                 elapsed = round(time.time() - status['started_at'], 1)
                 status['state'] = 'ready'
@@ -275,8 +299,9 @@ class SnapshotManager:
             status['message'] = 'Menyimpan perubahan ke snapshot...'
 
             db_path = cls._db_path(server_key)
-            conn_db = cls._init_db(db_path)
+            conn_db = None
             try:
+                conn_db = cls._init_db(db_path)
                 for (kd_divisi, kd_barang) in updated_keys:
                     idx = cache_index.get((kd_divisi, kd_barang))
                     if idx is not None:
@@ -289,8 +314,29 @@ class SnapshotManager:
                 now_str = datetime.now().isoformat()
                 conn_db.execute("INSERT OR REPLACE INTO snapshot_meta VALUES ('last_refresh', ?)", (now_str,))
                 conn_db.commit()
+            except sqlite3.DatabaseError as e:
+                if 'malformed' in str(e).lower() or 'corrupt' in str(e).lower():
+                    print(f"[DELTA ERROR] Corrupted DB detected for {server_key}. Removing...")
+                    if conn_db:
+                        try:
+                            conn_db.close()
+                        except:
+                            pass
+                    for ext in ['', '-wal', '-shm']:
+                        try:
+                            if os.path.exists(db_path + ext):
+                                os.remove(db_path + ext)
+                        except OSError:
+                            pass
+                    raise Exception("Database lokal korup. Silakan Refresh ulang (full refresh akan dipicu otomatis).")
+                else:
+                    raise
             finally:
-                conn_db.close()
+                if conn_db:
+                    try:
+                        conn_db.close()
+                    except:
+                        pass
 
             elapsed = round(time.time() - status['started_at'], 1)
             status['state'] = 'ready'
@@ -427,10 +473,31 @@ class SnapshotManager:
 
             # ── Phase 3: Write to SQLite ──
             db_path = cls._db_path(server_key)
-            conn = cls._init_db(db_path)
+            conn = None
             try:
+                conn = cls._init_db(db_path)
                 conn.execute('DELETE FROM stok_snapshot')
+            except sqlite3.DatabaseError as e:
+                if 'malformed' in str(e).lower() or 'corrupt' in str(e).lower():
+                    print(f"[SNAPSHOT] Corrupted database detected for {server_key}, rebuilding '{db_path}'...")
+                    if conn:
+                        try:
+                            conn.close()
+                        except:
+                            pass
+                    for ext in ['', '-wal', '-shm']:
+                        try:
+                            if os.path.exists(db_path + ext):
+                                os.remove(db_path + ext)
+                        except OSError as oe:
+                            print(f"[SNAPSHOT] Warning: could not remove {db_path + ext}: {oe}")
+                    
+                    conn = cls._init_db(db_path)
+                    conn.execute('DELETE FROM stok_snapshot')
+                else:
+                    raise
 
+            try:
                 batch = []
                 for row in final_rows:
                     batch.append((
@@ -452,7 +519,11 @@ class SnapshotManager:
 
                 conn.commit()
             finally:
-                conn.close()
+                if conn:
+                    try:
+                        conn.close()
+                    except:
+                        pass
 
             # ── Phase 4: Load into memory ──
             status['progress'] = 95
@@ -587,14 +658,33 @@ class SnapshotManager:
         db_path = cls._db_path(server_key)
         if not os.path.exists(db_path):
             return
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
+        conn = None
         try:
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
             rows = conn.execute('SELECT * FROM stok_snapshot').fetchall()
             cls._mem_cache[server_key] = [dict(r) for r in rows]
             cls._mem_cache_ts[server_key] = time.time()
+        except sqlite3.DatabaseError as e:
+            if 'malformed' in str(e).lower() or 'corrupt' in str(e).lower():
+                print(f"[MEMORY CACHE] Corrupted DB detected for {server_key}. Removing...")
+                if conn:
+                    try:
+                        conn.close()
+                    except:
+                        pass
+                for ext in ['', '-wal', '-shm']:
+                    try:
+                        if os.path.exists(db_path + ext):
+                            os.remove(db_path + ext)
+                    except OSError:
+                        pass
         finally:
-            conn.close()
+            if conn:
+                try:
+                    conn.close()
+                except:
+                    pass
 
     # ──────────── Search ────────────
 
@@ -748,3 +838,221 @@ class SnapshotManager:
             'mem_count': mem_count,
             'snapshot_info': snapshot_info,
         }
+
+    @classmethod
+    def get_barang_histori(cls, server_key, kd_barang, kd_divisi, start_date=None, end_date=None):
+        """
+        Fetch direct transaction history for ONE item in ONE division from MSSQL.
+        This queries all tables in parallel to bypass slow views (mimicking mon_g_barang_histori).
+        """
+        from app.Models.Database import db_manager
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        
+        try:
+            queries = {
+                'stok_awal': '''
+                    SELECT bd.kd_divisi, dbo.GetTanggalTerakhirTutupBuku() AS tanggal, '0' AS no_transaksi, 
+                           'Stok Awal' AS Transaksi, bd.stok_awal AS Debet, 0.0 AS Kredit, 
+                           bs.kd_satuan, bd.harga_beli_awal as harga
+                    FROM m_barang_divisi bd (NOLOCK)
+                    INNER JOIN m_barang_satuan bs (NOLOCK) ON bd.kd_barang = bs.kd_barang
+                    INNER JOIN m_barang b (NOLOCK) ON bd.kd_barang = b.kd_barang
+                    INNER JOIN m_kategori k (NOLOCK) ON b.kd_kategori = k.kd_kategori
+                    WHERE bs.jumlah = 1 AND k.status <> 2 AND bd.kd_barang = ?
+                      AND (? = '' OR bd.kd_divisi = ?)
+                ''',
+                'mutasi_keluar': '''
+                    SELECT t.kd_divisi_asal AS kd_divisi, t.tanggal, d.no_transaksi, 
+                           'Mutasi Keluar' AS Transaksi, 0.0 AS Debet, d.qty AS Kredit, 
+                           d.kd_satuan, 0.0 AS harga
+                    FROM t_mutasi_stok_detail d (NOLOCK)
+                    INNER JOIN t_mutasi_stok t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+                    WHERE t.tanggal > dbo.GetTanggalTerakhirTutupBuku() AND d.kd_barang = ?
+                      AND (? = '' OR t.kd_divisi_asal = ?)
+                ''',
+                'mutasi_masuk': '''
+                    SELECT t.kd_divisi_tujuan AS kd_divisi, t.tanggal, d.no_transaksi, 
+                           'Mutasi Masuk' AS Transaksi, d.qty AS Debet, 0.0 AS Kredit, 
+                           d.kd_satuan, 0.0 AS harga
+                    FROM t_mutasi_stok_detail d (NOLOCK)
+                    INNER JOIN t_mutasi_stok t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+                    WHERE t.tanggal > dbo.GetTanggalTerakhirTutupBuku() AND d.kd_barang = ?
+                      AND (? = '' OR t.kd_divisi_tujuan = ?)
+                ''',
+                'opname_masuk': '''
+                    SELECT kd_divisi, tanggal, no_transaksi, 'Opname Masuk' AS Transaksi, 
+                           QTY AS Debet, 0.0 AS Kredit, kd_satuan, 0.0 AS harga
+                    FROM t_opname_stok (NOLOCK)
+                    WHERE status = 2 AND tanggal > dbo.GetTanggalTerakhirTutupBuku() AND kd_barang = ?
+                      AND (? = '' OR kd_divisi = ?)
+                ''',
+                'opname_keluar': '''
+                    SELECT kd_divisi, tanggal, no_transaksi, 'Opname Keluar' AS Transaksi, 
+                           0.0 AS Debet, qty AS Kredit, kd_satuan, 0.0 AS harga
+                    FROM t_opname_stok (NOLOCK)
+                    WHERE status <> 2 AND tanggal > dbo.GetTanggalTerakhirTutupBuku() AND kd_barang = ?
+                      AND (? = '' OR kd_divisi = ?)
+                ''',
+                'pembelian': '''
+                    SELECT t.kd_divisi, t.tanggal, d.no_transaksi, 'Pembelian' AS Transaksi, 
+                           d.qty AS Debet, 0.0 AS Kredit, d.kd_satuan, d.harga_beli AS harga
+                    FROM t_pembelian_detail d (NOLOCK)
+                    INNER JOIN t_pembelian t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+                    WHERE t.tanggal > dbo.GetTanggalTerakhirTutupBuku() AND t.status IN (0, 1) AND d.kd_barang = ?
+                      AND (? = '' OR t.kd_divisi = ?)
+                ''',
+                'retur_pembelian': '''
+                    SELECT t.kd_divisi, t.tanggal, d.no_retur AS no_transaksi, 'Retur Pembelian' AS Transaksi, 
+                           0.0 AS Debet, d.qty AS Kredit, d.kd_satuan, d.harga AS harga
+                    FROM t_pembelian_retur_detail d (NOLOCK)
+                    INNER JOIN t_pembelian_retur t (NOLOCK) ON d.no_retur = t.no_retur
+                    WHERE t.tanggal > dbo.GetTanggalTerakhirTutupBuku() AND d.kd_barang = ?
+                      AND (? = '' OR t.kd_divisi = ?)
+                ''',
+                'penjualan': '''
+                    SELECT t.kd_divisi, t.tanggal, d.no_transaksi, 'Penjualan' AS Transaksi, 
+                           0.0 AS Debet, d.qty AS Kredit, d.kd_satuan, d.harga_jual AS harga
+                    FROM t_penjualan_detail d (NOLOCK)
+                    INNER JOIN t_penjualan t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+                    INNER JOIN m_barang b (NOLOCK) ON d.kd_barang = b.kd_barang
+                    INNER JOIN m_kategori k (NOLOCK) ON b.kd_kategori = k.kd_kategori
+                    WHERE t.tanggal > dbo.GetTanggalTerakhirTutupBuku() AND k.status <> 2 AND d.kd_barang = ?
+                      AND (? = '' OR t.kd_divisi = ?)
+                ''',
+                'retur_penjualan': '''
+                    SELECT t.kd_divisi, t.tanggal, d.no_retur AS no_transaksi, 'Retur Penjualan Dengan Nota' AS Transaksi, 
+                           d.qty AS Debet, 0.0 AS Kredit, d.kd_satuan, d.harga_jual AS harga
+                    FROM t_penjualan_retur_detail d (NOLOCK)
+                    INNER JOIN t_penjualan_retur t (NOLOCK) ON d.no_retur = t.no_retur
+                    WHERE t.tanggal > dbo.GetTanggalTerakhirTutupBuku() AND d.kd_barang = ?
+                      AND (? = '' OR t.kd_divisi = ?)
+                ''',
+                'master_barang': 'SELECT nama, kd_barang FROM m_barang (NOLOCK) WHERE kd_barang = ?',
+                'master_divisi': 'SELECT kd_divisi, keterangan, kepala_nota FROM m_divisi (NOLOCK)',
+                'master_satuan': 'SELECT kd_satuan, nama FROM m_satuan (NOLOCK)',
+                'satuan_konversi': 'SELECT kd_satuan, jumlah FROM m_barang_satuan (NOLOCK) WHERE kd_barang = ?'
+            }
+
+            def _fetch_component(name, sql):
+                conn = None
+                try:
+                    conn = db_manager.create_new_connection(server_key)
+                    cursor = conn.cursor()
+                    if name in ['master_divisi', 'master_satuan']:
+                        cursor.execute(sql)
+                    elif name in ['master_barang', 'satuan_konversi']:
+                        cursor.execute(sql, [kd_barang])
+                    else:
+                        cursor.execute(sql, [kd_barang, kd_divisi or '', kd_divisi or ''])
+                    
+                    columns = [desc[0] for desc in cursor.description]
+                    rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+                    cursor.close()
+                    return name, rows
+                except Exception as e:
+                    return name, f"ERROR: {str(e)}"
+                finally:
+                    if conn:
+                        try:
+                            conn.close()
+                        except:
+                            pass
+
+            results = {}
+            with ThreadPoolExecutor(max_workers=6) as executor:
+                futures = {executor.submit(_fetch_component, name, sql): name for name, sql in queries.items()}
+                for future in as_completed(futures):
+                    name = futures[future]
+                    res = future.result()
+                    if isinstance(res[1], str) and res[1].startswith('ERROR'):
+                        results[name] = []
+                    else:
+                        results[name] = res[1]
+
+            # Collect Master Data
+            barang_nama = results['master_barang'][0]['nama'] if results.get('master_barang') else ''
+            
+            divisi_map = {}
+            for d in results.get('master_divisi', []):
+                divisi_map[d['kd_divisi']] = {
+                    'keterangan': d.get('keterangan', ''),
+                    'kepala_nota': d.get('kepala_nota', '')
+                }
+                
+            satuan_map = {}
+            for s in results.get('master_satuan', []):
+                satuan_map[s['kd_satuan']] = s.get('nama', '')
+                
+            konversi_map = {}
+            for k in results.get('satuan_konversi', []):
+                konversi_map[k['kd_satuan']] = float(k.get('jumlah') or 1.0)
+
+            # Combine transaction tables
+            all_transactions = []
+            transaction_keys = [
+                'stok_awal', 'mutasi_keluar', 'mutasi_masuk', 'opname_masuk', 
+                'opname_keluar', 'pembelian', 'retur_pembelian', 'penjualan', 'retur_penjualan'
+            ]
+            for key in transaction_keys:
+                all_transactions.extend(results.get(key, []))
+
+            # Assemble Final Output
+            final_data = []
+            for row in all_transactions:
+                kd_div = row.get('kd_divisi') or ''
+                div_info = divisi_map.get(kd_div, {})
+                sat_nama = satuan_map.get(row.get('kd_satuan'), '')
+                konversi = konversi_map.get(row.get('kd_satuan'), 1.0)
+
+                tgl = row.get('tanggal')
+                if isinstance(tgl, datetime):
+                    tgl = tgl.strftime('%Y-%m-%d %H:%M:%S')
+
+                debet = float(row.get('Debet') or 0)
+                kredit = float(row.get('Kredit') or 0)
+                harga = float(row.get('harga') or 0)
+
+                final_data.append({
+                    'Kd_Divisi': kd_div,
+                    'Divisi': div_info.get('keterangan', ''),
+                    'K.Nota': div_info.get('kepala_nota', ''),
+                    'tanggal': tgl,
+                    'Transaksi': row.get('Transaksi', ''),
+                    'no_transaksi': row.get('no_transaksi', ''),
+                    'kd_barang': kd_barang,
+                    'barang': barang_nama,
+                    'Debet': debet,
+                    'Kredit': kredit,
+                    'kd_satuan': row.get('kd_satuan', ''),
+                    'satuan': sat_nama,
+                    'harga': harga,
+                    'Konversi': konversi
+                })
+
+            if start_date or end_date:
+                filtered_data = []
+                for r in final_data:
+                    tgl_str = r['tanggal']
+                    if not tgl_str:
+                        continue
+                    # Lexical comparison on YYYY-MM-DD
+                    if start_date and tgl_str[:10] < start_date:
+                        continue
+                    if end_date and tgl_str[:10] > end_date:
+                        continue
+                    filtered_data.append(r)
+                final_data = filtered_data
+
+            # Sort mimicking: ORDER BY dbo.m_divisi.kd_divisi, dbo.v_g_barang_histori_detail.tanggal
+            final_data.sort(key=lambda x: (x['Kd_Divisi'], x['tanggal'] or ''))
+
+            return {
+                'status': 'success',
+                'data': final_data,
+                'row_count': len(final_data)
+            }
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return {'status': 'error', 'message': str(e)}

@@ -14,5 +14,69 @@
         "database": "SOLID_SIM",
         "username": "sa",
         "password": "Getwin2st"
+    },
+    "server-rumak": {
+        "name": "RUMAK",
+        "host": "server-rumak",
+        "port": 1433,
+        "database": "SOLID_SIM",
+        "username": "sa",
+        "password": "12qwaszx#DB"
+    },
+    "server-toys": {
+        "name": "PUSAT-GROSIR",
+        "host": "server-toys",
+        "port": 1433,
+        "database": "SOLID_SIM",
+        "username": "sa",
+        "password": "Getwin2st"
+    },
+    "server-tanjung": {
+        "name": "TANJUNG",
+        "host": "server-tanjung",
+        "port": 1433,
+        "database": "SOLID_SIM",
+        "username": "sa",
+        "password": "Getwin2st"
+    },
+    "server-kotamas": {
+        "name": "KOTAMAS",
+        "host": "server-kotamas",
+        "port": 1433,
+        "database": "SOLID_SIM",
+        "username": "sa",
+        "password": "Getwin2st"
+    },
+    "server-praya": {
+        "name": "PRAYA",
+        "host": "server-praya",
+        "port": 1433,
+        "database": "SOLID_SIM",
+        "username": "sa",
+        "password": "12qwaszx#DB"
+    },
+    "server-dragon": {
+        "name": "DRAGON",
+        "host": "server-dragon",
+        "port": 1433,
+        "database": "SOLID_SIM",
+        "username": "sa",
+        "password": "Getwin2st"
+    },
+    "server-pagesangan": {
+        "name": "PAGESANGAN",
+        "host": "server-pagesangan",
+        "port": 1433,
+        "database": "SOLID_SIM",
+        "username": "sa",
+        "password": "12qwaszx#DB"
+    },
+    "GUDANG": {
+        "name": "GUDANG",
+        "host": "server-gudang",
+        "port": 1433,
+        "database": "SOLID_SIM",
+        "username": "sa",
+        "password": "Getwin2st"
     }
 }

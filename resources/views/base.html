@@ -439,6 +439,11 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="/stok/histori">
+                            <i class="fas fa-history fa-sm"></i> Histori
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="/stok/index">
                             <i class="fas fa-server fa-sm"></i> Servers
                         </a>
@@ -476,10 +481,88 @@
         </div>
     </footer>
 
+    <!-- Global Login Modal -->
+    <div class="modal fade" id="globalLoginModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-lock" style="color:var(--accent)"></i> Admin Login</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <p class="text-muted" style="font-size:0.85rem">Autentikasi diperlukan untuk melanjutkan aksi ini.</p>
+                    <form id="globalLoginModalForm">
+                        <div class="mb-3">
+                            <label class="form-label">Username</label>
+                            <input type="text" id="globalLoginUsername" class="form-control" placeholder="admin" required>
+                        </div>
+                        <div class="mb-4">
+                            <label class="form-label">Password</label>
+                            <input type="password" id="globalLoginPassword" class="form-control" placeholder="••••••••" required>
+                        </div>
+                        <div id="globalLoginError" class="alert alert-danger" style="display:none;font-size:0.8rem;padding:0.5rem"></div>
+                        <button type="submit" class="btn btn-accent w-100" id="globalLoginBtn">
+                            Login <i class="fas fa-arrow-right fa-sm ms-1"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
     <script>
+        // Global Login Modal handler
+        let loginModalInstance = null;
+        function showLoginModal() {
+            if (!loginModalInstance) {
+                loginModalInstance = new bootstrap.Modal(document.getElementById('globalLoginModal'));
+            }
+            document.getElementById('globalLoginError').style.display = 'none';
+            document.getElementById('globalLoginUsername').value = '';
+            document.getElementById('globalLoginPassword').value = '';
+            loginModalInstance.show();
+            setTimeout(() => document.getElementById('globalLoginUsername').focus(), 400);
+        }
+
+        document.getElementById('globalLoginModalForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const btn = document.getElementById('globalLoginBtn');
+            const err = document.getElementById('globalLoginError');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+            err.style.display = 'none';
+
+            fetch('/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: document.getElementById('globalLoginUsername').value,
+                    password: document.getElementById('globalLoginPassword').value
+                })
+            })
+            .then(async r => {
+                const data = await r.json();
+                if (data.status === 'success') {
+                    loginModalInstance.hide();
+                    window.location.reload(); // Reload to refresh page state
+                } else {
+                    err.textContent = data.message || 'Login gagal';
+                    err.style.display = 'block';
+                }
+            })
+            .catch(e => {
+                err.textContent = 'Gagal terhubung ke server';
+                err.style.display = 'block';
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = 'Login <i class="fas fa-arrow-right fa-sm ms-1"></i>';
+            });
+        });
+
         function updateServerBadge() {
             fetch('/stok/get-current-server')
                 .then(r => r.json())

@@ -1,0 +1,492 @@
+{% extends "base.html" %}
+{% block title %}Histori Barang - StokMonitor{% endblock %}
+
+{% block extra_css %}
+<style>
+    .histori-container {
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+    .search-section {
+        background: var(--bg-card);
+        backdrop-filter: blur(12px);
+        border: 1px solid var(--border-glass);
+        border-radius: 20px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.02);
+    }
+    .table-container {
+        background: var(--bg-card);
+        backdrop-filter: blur(12px);
+        border: 1px solid var(--border-glass);
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.03);
+    }
+    .table thead th {
+        background: rgba(79, 70, 229, 0.03);
+        color: var(--accent);
+        text-transform: uppercase;
+        font-size: 0.65rem;
+        letter-spacing: 0.05em;
+        padding: 0.75rem;
+        border-bottom: 1px solid var(--border-glass);
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        position: relative;
+    }
+    .table thead th:hover {
+        background: rgba(79, 70, 229, 0.08);
+    }
+    .table thead th i.sort-icon {
+        margin-left: 5px;
+        font-size: 0.6rem;
+        opacity: 0.4;
+    }
+    .table thead th.active i.sort-icon {
+        opacity: 1;
+        color: var(--accent-light);
+    }
+    .table td {
+        padding: 0.6rem 0.75rem;
+        border-bottom: 1px solid rgba(0,0,0,0.03);
+        font-size: 0.78rem;
+        vertical-align: middle;
+    }
+    .saldo-badge {
+        font-weight: 700;
+        color: var(--accent);
+        background: var(--accent-glow);
+        padding: 0.2rem 0.5rem;
+        border-radius: 6px;
+    }
+    .empty-state {
+        padding: 4rem 2rem;
+        text-align: center;
+        color: var(--text-muted);
+    }
+    .empty-icon {
+        font-size: 3rem;
+        margin-bottom: 1.5rem;
+        opacity: 0.3;
+    }
+    .total-row {
+        background: rgba(0,0,0,0.01);
+        font-weight: 700;
+    }
+    .sticky-col {
+        position: sticky;
+        left: 0;
+        background: white;
+        z-index: 1;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="histori-container">
+    <!-- Header -->
+    <div class="d-flex align-items-center justify-content-between mb-4 fade-up">
+        <div>
+            <h3 style="font-weight:800;letter-spacing:-0.03em;margin-bottom:0.25rem">
+                <i class="fas fa-history" style="color:var(--accent)"></i> Histori Transaksi Barang
+            </h3>
+            <p style="color:var(--text-muted);font-size:0.85rem;margin:0">Lihat riwayat pergerakan stok lintas divisi</p>
+        </div>
+        <div class="d-flex gap-2">
+            <button id="btn-export" class="btn btn-glass btn-sm" onclick="exportToExcel()" style="display: none;">
+                <i class="fas fa-file-excel text-success me-1"></i> Export Excel
+            </button>
+            <a href="/stok/index" class="btn btn-glass btn-sm">
+                <i class="fas fa-exchange-alt fa-sm"></i> Ganti Server
+            </a>
+        </div>
+    </div>
+
+    <!-- Search & Filter Section -->
+    <div class="search-section fade-up" style="animation-delay: 0.1s">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label">Divisi (Opsional)</label>
+                <input type="text" id="input-divisi" class="form-control" placeholder="Semua">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Kode Barang</label>
+                <input type="text" id="input-barang" class="form-control" placeholder="Kode...">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Tgl Mulai</label>
+                <input type="date" id="input-start-date" class="form-control">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Tgl Akhir</label>
+                <input type="date" id="input-end-date" class="form-control">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Filter Satuan</label>
+                <select id="select-satuan" class="form-select" onchange="applyFilters()">
+                    <option value="ALL">Semua Satuan</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-accent w-100" onclick="fetchHistori()" id="btn-search">
+                    <i class="fas fa-search me-1"></i> Cari
+                </button>
+            </div>
+        </div>
+        <div class="row g-3 mt-1">
+             <div class="col-md-auto d-flex align-items-center">
+                <div class="form-check form-switch p-0 m-0">
+                    <input class="form-check-input ms-0 me-2" type="checkbox" id="toggle-konversi" onchange="applyFilters()">
+                    <label class="form-check-label text-muted" for="toggle-konversi" style="font-size: 0.85rem">Konversi ke Satuan Terkecil (Kalkulasi Valid)</label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alert Container -->
+    <div id="alert-container"></div>
+
+    <!-- Result Area -->
+    <div id="result-area" class="fade-up" style="animation-delay: 0.2s; display: none;">
+        <!-- Item Info Header -->
+        <div class="glass-card p-3 mb-3 d-flex align-items-center justify-content-between border-start border-4 border-primary">
+            <div>
+                <span class="badge-glass mb-1" id="info-kd-barang">BRG-001</span>
+                <h5 class="mb-0" id="info-nama-barang" style="font-weight: 700;">Nama Barang</h5>
+            </div>
+            <div class="text-end">
+                <div class="stat-label">Total Stok Akhir (Filtered)</div>
+                <div class="saldo-badge" id="info-saldo-akhir" style="font-size: 1.25rem;">0</div>
+            </div>
+        </div>
+
+        <!-- Table -->
+        <div class="table-container">
+            <div class="table-responsive" style="max-height: 65vh;">
+                <table class="table table-hover mb-0">
+                    <thead class="sticky-top">
+                        <tr>
+                            <th class="text-center" style="width: 40px" onclick="handleSort('index')">No <i class="fas fa-sort sort-icon"></i></th>
+                            <th onclick="handleSort('Kd_Divisi')">Kd Div <i class="fas fa-sort sort-icon"></i></th>
+                            <th onclick="handleSort('Divisi')">Divisi <i class="fas fa-sort sort-icon"></i></th>
+                            <th onclick="handleSort('K.Nota')">K.Nota <i class="fas fa-sort sort-icon"></i></th>
+                            <th style="width: 140px" onclick="handleSort('tanggal')">Tanggal <i class="fas fa-sort sort-icon"></i></th>
+                            <th onclick="handleSort('Transaksi')">Transaksi <i class="fas fa-sort sort-icon"></i></th>
+                            <th onclick="handleSort('no_transaksi')">No. Transaksi <i class="fas fa-sort sort-icon"></i></th>
+                            <th class="text-end" style="width: 80px" onclick="handleSort('Debet')">Debet <i class="fas fa-sort sort-icon"></i></th>
+                            <th class="text-end" style="width: 80px" onclick="handleSort('Kredit')">Kredit <i class="fas fa-sort sort-icon"></i></th>
+                            <th onclick="handleSort('satuan')">Satuan <i class="fas fa-sort sort-icon"></i></th>
+                            <th class="text-end" style="width: 120px" onclick="handleSort('harga')">Harga <i class="fas fa-sort sort-icon"></i></th>
+                            <th class="text-end" style="width: 100px" onclick="handleSort('saldo')">Saldo <i class="fas fa-sort sort-icon"></i></th>
+                        </tr>
+                    </thead>
+                    <tbody id="histori-tbody">
+                        <!-- Data rows here -->
+                    </tbody>
+                    <tfoot class="total-row sticky-bottom" style="background: var(--bg-secondary);">
+                        <tr>
+                            <td colspan="7" class="text-end">TOTAL (TERFILTER)</td>
+                            <td class="text-end text-success" id="total-debet">0</td>
+                            <td class="text-end text-danger" id="total-kredit">0</td>
+                            <td colspan="2"></td>
+                            <td class="text-end text-primary" id="final-saldo">0</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- States -->
+    <div id="empty-state" class="glass-card empty-state fade-up">
+        <div class="empty-icon"><i class="fas fa-barcode"></i></div>
+        <h5>Siap Mencari</h5>
+        <p>Masukkan kode barang untuk melihat riwayat transaksi di seluruh divisi.</p>
+    </div>
+
+    <div id="loading-state" class="glass-card empty-state fade-up" style="display: none;">
+        <div class="spinner-border text-primary mb-3" role="status"></div>
+        <h5>Menghubungkan ke SQL Server...</h5>
+        <p>Sedang menarik data transaksi detail.</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let rawData = [];
+    let currentSort = { column: 'tanggal', direction: 'asc' };
+    
+    const inputDivisi = document.getElementById('input-divisi');
+    const inputBarang = document.getElementById('input-barang');
+    const inputStartDate = document.getElementById('input-start-date');
+    const inputEndDate = document.getElementById('input-end-date');
+    const selectSatuan = document.getElementById('select-satuan');
+    const btnSearch = document.getElementById('btn-search');
+    const btnExport = document.getElementById('btn-export');
+    const alertContainer = document.getElementById('alert-container');
+
+    [inputDivisi, inputBarang].forEach(el => {
+        el.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') fetchHistori();
+        });
+    });
+
+    function fetchHistori() {
+        const kdDivisi = inputDivisi.value.trim();
+        const kdBarang = inputBarang.value.trim();
+        const startDate = inputStartDate.value;
+        const endDate = inputEndDate.value;
+
+        if (!kdBarang) {
+            showAlert('warning', 'Kode Barang wajib diisi.');
+            return;
+        }
+
+        document.getElementById('empty-state').style.display = 'none';
+        document.getElementById('result-area').style.display = 'none';
+        document.getElementById('loading-state').style.display = 'block';
+        btnSearch.disabled = true;
+        btnExport.style.display = 'none';
+
+        let url = `/stok/barang-histori?kd_divisi=${encodeURIComponent(kdDivisi)}&kd_barang=${encodeURIComponent(kdBarang)}`;
+        if (startDate) url += `&start_date=${startDate}`;
+        if (endDate) url += `&end_date=${endDate}`;
+
+        fetch(url)
+            .then(r => r.json())
+            .then(res => {
+                if (res.status === 'success') {
+                    // Inject original index for stable sorting
+                    rawData = res.data.map((r, i) => ({ ...r, originalIndex: i }));
+                    if (rawData.length === 0) {
+                        showNoData();
+                    } else {
+                        populateSatuanDropdown(rawData);
+                        currentSort = { column: 'tanggal', direction: 'asc' }; // Reset to default sort
+                        applyFilters();
+                        btnExport.style.display = 'block';
+                    }
+                } else {
+                    showAlert('danger', 'Error: ' + res.message);
+                    showInitialState();
+                }
+            })
+            .catch(err => {
+                showAlert('danger', 'Koneksi gagal: ' + err.message);
+                showInitialState();
+            })
+            .finally(() => {
+                document.getElementById('loading-state').style.display = 'none';
+                btnSearch.disabled = false;
+            });
+    }
+
+    function populateSatuanDropdown(data) {
+        const satuanSet = new Set(data.map(r => r.satuan).filter(Boolean));
+        selectSatuan.innerHTML = '<option value="ALL">Semua Satuan</option>';
+        satuanSet.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s;
+            opt.textContent = s;
+            selectSatuan.appendChild(opt);
+        });
+    }
+
+    function handleSort(column) {
+        if (currentSort.column === column) {
+            currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            currentSort.column = column;
+            currentSort.direction = 'asc';
+        }
+        
+        applyFilters();
+        updateSortIcons();
+    }
+
+    function updateSortIcons() {
+        document.querySelectorAll('th').forEach(th => {
+            th.classList.remove('active');
+            const icon = th.querySelector('i.sort-icon');
+            if (icon) {
+                icon.className = 'fas fa-sort sort-icon';
+            }
+        });
+
+        const activeTh = Array.from(document.querySelectorAll('th')).find(th => 
+            th.getAttribute('onclick') && th.getAttribute('onclick').includes(`'${currentSort.column}'`)
+        );
+        
+        if (activeTh) {
+            activeTh.classList.add('active');
+            const icon = activeTh.querySelector('i.sort-icon');
+            if (icon) {
+                icon.className = `fas fa-sort-${currentSort.direction === 'asc' ? 'up' : 'down'} sort-icon`;
+            }
+        }
+    }
+
+    function applyFilters() {
+        const filterSatuan = selectSatuan.value;
+        const useKonversi = document.getElementById('toggle-konversi').checked;
+        
+        let data = filterSatuan === 'ALL' 
+            ? [...rawData] 
+            : rawData.filter(r => r.satuan === filterSatuan);
+
+        // Sorting
+        data.sort((a, b) => {
+            let valA = currentSort.column === 'index' ? a.originalIndex : a[currentSort.column];
+            let valB = currentSort.column === 'index' ? b.originalIndex : b[currentSort.column];
+
+            // Handle special cases
+            if (currentSort.column === 'tanggal') {
+                valA = new Date(valA).getTime();
+                valB = new Date(valB).getTime();
+            } else if (currentSort.column === 'saldo') {
+                return 0; 
+            }
+
+            if (valA === valB) return 0;
+            if (valA === null || valA === undefined) return 1;
+            if (valB === null || valB === undefined) return -1;
+
+            if (typeof valA === 'string') {
+                return currentSort.direction === 'asc' 
+                    ? valA.localeCompare(valB)
+                    : valB.localeCompare(valA);
+            } else {
+                return currentSort.direction === 'asc'
+                    ? valA - valB
+                    : valB - valA;
+            }
+        });
+
+        // Compute Konversi map so we pass adapted values to render
+        const processedData = data.map(row => {
+            const rowCopy = { ...row };
+            const conv = useKonversi ? (row.Konversi || 1.0) : 1.0;
+            if (useKonversi && conv !== 1.0) {
+                rowCopy.Debet = (rowCopy.Debet || 0) * conv;
+                rowCopy.Kredit = (rowCopy.Kredit || 0) * conv;
+                rowCopy.satuan = rowCopy.satuan + ' (Conv)';
+            }
+            return rowCopy;
+        });
+
+        renderHistori(processedData);
+    }
+
+    function renderHistori(data) {
+        const tbody = document.getElementById('histori-tbody');
+        tbody.innerHTML = '';
+        
+        let saldo = 0;
+        let totalDebet = 0;
+        let totalKredit = 0;
+
+        data.forEach((row, index) => {
+            const debet = row.Debet || 0;
+            const kredit = row.Kredit || 0;
+            saldo += (debet - kredit);
+            totalDebet += debet;
+            totalKredit += kredit;
+
+            const tr = document.createElement('tr');
+            let badgeClass = 'badge-glass';
+            if (row.Transaksi.includes('Jual')) badgeClass += ' text-danger';
+            if (row.Transaksi.includes('Beli')) badgeClass += ' text-success';
+            if (row.Transaksi.includes('Awal')) badgeClass += ' text-primary';
+
+            tr.innerHTML = `
+                <td class="text-center text-muted">${index + 1}</td>
+                <td class="fw-bold">${row.Kd_Divisi}</td>
+                <td>${row.Divisi}</td>
+                <td><small>${row['K.Nota'] || '-'}</small></td>
+                <td style="font-size: 0.7rem">${formatDate(row.tanggal)}</td>
+                <td><span class="${badgeClass}" style="font-size:0.65rem">${row.Transaksi}</span></td>
+                <td style="font-family: monospace; font-size: 0.75rem">${row.no_transaksi}</td>
+                <td class="text-end ${debet > 0 ? 'text-success fw-bold' : 'text-muted'}">${debet || ''}</td>
+                <td class="text-end ${kredit > 0 ? 'text-danger fw-bold' : 'text-muted'}">${kredit || ''}</td>
+                <td>${row.satuan || '-'}</td>
+                <td class="text-end">${formatIDR(row.harga)}</td>
+                <td class="text-end"><span class="saldo-badge">${saldo % 1 === 0 ? saldo : saldo.toFixed(2)}</span></td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('info-kd-barang').textContent = data.length > 0 ? data[0].kd_barang : '-';
+        document.getElementById('info-nama-barang').textContent = data.length > 0 ? (data[0].barang || 'Nama tidak ditemukan') : '-';
+        document.getElementById('info-saldo-akhir').textContent = (saldo % 1 === 0 ? saldo : saldo.toFixed(2));
+        
+        document.getElementById('total-debet').textContent = totalDebet % 1 === 0 ? totalDebet : totalDebet.toFixed(2);
+        document.getElementById('total-kredit').textContent = totalKredit % 1 === 0 ? totalKredit : totalKredit.toFixed(2);
+        document.getElementById('final-saldo').textContent = (saldo % 1 === 0 ? saldo : saldo.toFixed(2));
+
+        document.getElementById('result-area').style.display = 'block';
+    }
+
+    function exportToExcel() {
+        const kdDivisi = inputDivisi.value.trim();
+        const kdBarang = inputBarang.value.trim();
+        const startDate = inputStartDate.value;
+        const endDate = inputEndDate.value;
+        const useKonversi = document.getElementById('toggle-konversi').checked ? '1' : '0';
+        
+        let url = `/stok/export/histori?kd_divisi=${encodeURIComponent(kdDivisi)}&kd_barang=${encodeURIComponent(kdBarang)}`;
+        if (startDate) url += `&start_date=${startDate}`;
+        if (endDate) url += `&end_date=${endDate}`;
+        url += `&konversi=${useKonversi}`;
+        window.location.href = url;
+    }
+
+    function showNoData() {
+        document.getElementById('empty-state').style.display = 'block';
+        document.getElementById('empty-state').innerHTML = `
+            <div class="empty-icon"><i class="fas fa-ghost"></i></div>
+            <h5>Data Tidak Ditemukan</h5>
+            <p>Tidak ada riwayat transaksi ditemukan untuk barang ini.</p>
+        `;
+    }
+
+    function showInitialState() {
+        document.getElementById('empty-state').style.display = 'block';
+        document.getElementById('result-area').style.display = 'none';
+    }
+
+    function showAlert(type, msg) {
+        alertContainer.innerHTML = `
+            <div class="alert alert-glass alert-${type} alert-dismissible fade show mb-4 fade-up">
+                <i class="fas fa-exclamation-circle me-2"></i>
+                ${msg}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        `;
+    }
+
+    function formatIDR(val) {
+        if (!val) return '-';
+        return new Intl.NumberFormat('id-ID', {
+            style: 'currency',
+            currency: 'IDR',
+            minimumFractionDigits: 0
+        }).format(val);
+    }
+
+    function formatDate(dateStr) {
+        if (!dateStr) return '-';
+        const d = new Date(dateStr);
+        return d.toLocaleDateString('id-ID', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+</script>
+{% endblock %}
