@@ -26,7 +26,7 @@ database/snapshots/*.db
 # Environment / secrets
 .env
 *.env
-config/servers.json
+database/servers.json
 
 # OS
 Thumbs.db
