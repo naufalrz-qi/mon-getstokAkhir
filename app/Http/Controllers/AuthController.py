@@ -30,14 +30,23 @@ class AuthController:
     @staticmethod
     def login():
         """API/POST Handler: Handle login form submission"""
-        username = request.form.get('username')
-        password = request.form.get('password')
+        if request.is_json:
+            data = request.get_json()
+            username = data.get('username')
+            password = data.get('password')
+        else:
+            username = request.form.get('username')
+            password = request.form.get('password')
 
         if username == AuthController.ADMIN_USERNAME and AuthController._verify_password(password, AuthController.ADMIN_PASSWORD_HASH):
             session['is_admin'] = True
             session.permanent = True  # Mengikuti PERMANENT_SESSION_LIFETIME di config
+            if request.is_json:
+                return jsonify({'status': 'success', 'message': 'Login berhasil'})
             return redirect('/stok/servers')
         
+        if request.is_json:
+            return jsonify({'status': 'error', 'message': 'Username atau password salah'}), 401
         return render_template('login.html', error='Username atau password salah')
 
     @staticmethod
@@ -53,7 +62,7 @@ class AuthController:
         def decorated_function(*args, **kwargs):
             if not session.get('is_admin'):
                 # Jika request expects JSON (API)
-                if request.is_json or request.path.startswith('/stok/api/'):
+                if request.is_json or request.path.startswith('/stok/api/') or request.path.startswith('/stok/snapshot/'):
                     return jsonify({'status': 'error', 'message': 'Authentication required. Mohon login sebagai admin.'}), 401
                 # Jika request standard browser
                 return redirect('/auth/login')

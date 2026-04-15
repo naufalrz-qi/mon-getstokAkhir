@@ -110,11 +110,19 @@
         <div class="row g-3 align-items-end">
             <div class="col-md-2">
                 <label class="form-label">Divisi (Opsional)</label>
-                <input type="text" id="input-divisi" class="form-control" placeholder="Semua Divisi">
+                <input type="text" id="input-divisi" class="form-control" placeholder="Semua">
             </div>
-            <div class="col-md-5">
+            <div class="col-md-2">
                 <label class="form-label">Kode Barang</label>
-                <input type="text" id="input-barang" class="form-control" placeholder="Masukkan kode barang lengkap...">
+                <input type="text" id="input-barang" class="form-control" placeholder="Kode...">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Tgl Mulai</label>
+                <input type="date" id="input-start-date" class="form-control">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Tgl Akhir</label>
+                <input type="date" id="input-end-date" class="form-control">
             </div>
             <div class="col-md-2">
                 <label class="form-label">Filter Satuan</label>
@@ -122,10 +130,18 @@
                     <option value="ALL">Semua Satuan</option>
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <button class="btn btn-accent w-100" onclick="fetchHistori()" id="btn-search">
-                    <i class="fas fa-search me-2"></i> Cari Histori
+                    <i class="fas fa-search me-1"></i> Cari
                 </button>
+            </div>
+        </div>
+        <div class="row g-3 mt-1">
+             <div class="col-md-auto d-flex align-items-center">
+                <div class="form-check form-switch p-0 m-0">
+                    <input class="form-check-input ms-0 me-2" type="checkbox" id="toggle-konversi" onchange="applyFilters()">
+                    <label class="form-check-label text-muted" for="toggle-konversi" style="font-size: 0.85rem">Konversi ke Satuan Terkecil (Kalkulasi Valid)</label>
+                </div>
             </div>
         </div>
     </div>
@@ -206,6 +222,8 @@
     
     const inputDivisi = document.getElementById('input-divisi');
     const inputBarang = document.getElementById('input-barang');
+    const inputStartDate = document.getElementById('input-start-date');
+    const inputEndDate = document.getElementById('input-end-date');
     const selectSatuan = document.getElementById('select-satuan');
     const btnSearch = document.getElementById('btn-search');
     const btnExport = document.getElementById('btn-export');
@@ -220,6 +238,8 @@
     function fetchHistori() {
         const kdDivisi = inputDivisi.value.trim();
         const kdBarang = inputBarang.value.trim();
+        const startDate = inputStartDate.value;
+        const endDate = inputEndDate.value;
 
         if (!kdBarang) {
             showAlert('warning', 'Kode Barang wajib diisi.');
@@ -232,7 +252,9 @@
         btnSearch.disabled = true;
         btnExport.style.display = 'none';
 
-        const url = `/stok/barang-histori?kd_divisi=${encodeURIComponent(kdDivisi)}&kd_barang=${encodeURIComponent(kdBarang)}`;
+        let url = `/stok/barang-histori?kd_divisi=${encodeURIComponent(kdDivisi)}&kd_barang=${encodeURIComponent(kdBarang)}`;
+        if (startDate) url += `&start_date=${startDate}`;
+        if (endDate) url += `&end_date=${endDate}`;
 
         fetch(url)
             .then(r => r.json())
@@ -310,6 +332,8 @@
 
     function applyFilters() {
         const filterSatuan = selectSatuan.value;
+        const useKonversi = document.getElementById('toggle-konversi').checked;
+        
         let data = filterSatuan === 'ALL' 
             ? [...rawData] 
             : rawData.filter(r => r.satuan === filterSatuan);
@@ -324,9 +348,6 @@
                 valA = new Date(valA).getTime();
                 valB = new Date(valB).getTime();
             } else if (currentSort.column === 'saldo') {
-                // This is fake because saldo is calculated, 
-                // but we'll sort based on original order if they click saldo?
-                // Actually, let's keep it simple.
                 return 0; 
             }
 
@@ -345,7 +366,19 @@
             }
         });
 
-        renderHistori(data);
+        // Compute Konversi map so we pass adapted values to render
+        const processedData = data.map(row => {
+            const rowCopy = { ...row };
+            const conv = useKonversi ? (row.Konversi || 1.0) : 1.0;
+            if (useKonversi && conv !== 1.0) {
+                rowCopy.Debet = (rowCopy.Debet || 0) * conv;
+                rowCopy.Kredit = (rowCopy.Kredit || 0) * conv;
+                rowCopy.satuan = rowCopy.satuan + ' (Conv)';
+            }
+            return rowCopy;
+        });
+
+        renderHistori(processedData);
     }
 
     function renderHistori(data) {
@@ -400,7 +433,15 @@
     function exportToExcel() {
         const kdDivisi = inputDivisi.value.trim();
         const kdBarang = inputBarang.value.trim();
-        window.location.href = `/stok/export/histori?kd_divisi=${encodeURIComponent(kdDivisi)}&kd_barang=${encodeURIComponent(kdBarang)}`;
+        const startDate = inputStartDate.value;
+        const endDate = inputEndDate.value;
+        const useKonversi = document.getElementById('toggle-konversi').checked ? '1' : '0';
+        
+        let url = `/stok/export/histori?kd_divisi=${encodeURIComponent(kdDivisi)}&kd_barang=${encodeURIComponent(kdBarang)}`;
+        if (startDate) url += `&start_date=${startDate}`;
+        if (endDate) url += `&end_date=${endDate}`;
+        url += `&konversi=${useKonversi}`;
+        window.location.href = url;
     }
 
     function showNoData() {

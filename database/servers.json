@@ -70,5 +70,13 @@
         "database": "SOLID_SIM",
         "username": "sa",
         "password": "12qwaszx#DB"
+    },
+    "GUDANG": {
+        "name": "GUDANG",
+        "host": "server-gudang",
+        "port": 1433,
+        "database": "SOLID_SIM",
+        "username": "sa",
+        "password": "Getwin2st"
     }
 }

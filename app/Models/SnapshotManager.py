@@ -840,7 +840,7 @@ class SnapshotManager:
         }
 
     @classmethod
-    def get_barang_histori(cls, server_key, kd_barang, kd_divisi):
+    def get_barang_histori(cls, server_key, kd_barang, kd_divisi, start_date=None, end_date=None):
         """
         Fetch direct transaction history for ONE item in ONE division from MSSQL.
         This queries all tables in parallel to bypass slow views (mimicking mon_g_barang_histori).
@@ -929,7 +929,8 @@ class SnapshotManager:
                 ''',
                 'master_barang': 'SELECT nama, kd_barang FROM m_barang (NOLOCK) WHERE kd_barang = ?',
                 'master_divisi': 'SELECT kd_divisi, keterangan, kepala_nota FROM m_divisi (NOLOCK)',
-                'master_satuan': 'SELECT kd_satuan, nama FROM m_satuan (NOLOCK)'
+                'master_satuan': 'SELECT kd_satuan, nama FROM m_satuan (NOLOCK)',
+                'satuan_konversi': 'SELECT kd_satuan, jumlah FROM m_barang_satuan (NOLOCK) WHERE kd_barang = ?'
             }
 
             def _fetch_component(name, sql):
@@ -939,7 +940,7 @@ class SnapshotManager:
                     cursor = conn.cursor()
                     if name in ['master_divisi', 'master_satuan']:
                         cursor.execute(sql)
-                    elif name == 'master_barang':
+                    elif name in ['master_barang', 'satuan_konversi']:
                         cursor.execute(sql, [kd_barang])
                     else:
                         cursor.execute(sql, [kd_barang, kd_divisi or '', kd_divisi or ''])
@@ -981,6 +982,10 @@ class SnapshotManager:
             satuan_map = {}
             for s in results.get('master_satuan', []):
                 satuan_map[s['kd_satuan']] = s.get('nama', '')
+                
+            konversi_map = {}
+            for k in results.get('satuan_konversi', []):
+                konversi_map[k['kd_satuan']] = float(k.get('jumlah') or 1.0)
 
             # Combine transaction tables
             all_transactions = []
@@ -997,6 +1002,7 @@ class SnapshotManager:
                 kd_div = row.get('kd_divisi') or ''
                 div_info = divisi_map.get(kd_div, {})
                 sat_nama = satuan_map.get(row.get('kd_satuan'), '')
+                konversi = konversi_map.get(row.get('kd_satuan'), 1.0)
 
                 tgl = row.get('tanggal')
                 if isinstance(tgl, datetime):
@@ -1019,8 +1025,23 @@ class SnapshotManager:
                     'Kredit': kredit,
                     'kd_satuan': row.get('kd_satuan', ''),
                     'satuan': sat_nama,
-                    'harga': harga
+                    'harga': harga,
+                    'Konversi': konversi
                 })
+
+            if start_date or end_date:
+                filtered_data = []
+                for r in final_data:
+                    tgl_str = r['tanggal']
+                    if not tgl_str:
+                        continue
+                    # Lexical comparison on YYYY-MM-DD
+                    if start_date and tgl_str[:10] < start_date:
+                        continue
+                    if end_date and tgl_str[:10] > end_date:
+                        continue
+                    filtered_data.append(r)
+                final_data = filtered_data
 
             # Sort mimicking: ORDER BY dbo.m_divisi.kd_divisi, dbo.v_g_barang_histori_detail.tanggal
             final_data.sort(key=lambda x: (x['Kd_Divisi'], x['tanggal'] or ''))

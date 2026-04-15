@@ -203,11 +203,13 @@ class StokController:
 
             kd_barang = request.args.get('kd_barang')
             kd_divisi = request.args.get('kd_divisi', '')
+            start_date = request.args.get('start_date', '')
+            end_date = request.args.get('end_date', '')
 
             if not kd_barang:
                 return jsonify({'status': 'error', 'message': 'Kode barang harus diisi'}), 400
 
-            result = SnapshotManager.get_barang_histori(server_key, kd_barang, kd_divisi)
+            result = SnapshotManager.get_barang_histori(server_key, kd_barang, kd_divisi, start_date, end_date)
             return jsonify(result)
 
         except Exception as e:
@@ -298,11 +300,13 @@ class StokController:
 
             kd_barang = request.args.get('kd_barang')
             kd_divisi = request.args.get('kd_divisi', '')
+            start_date = request.args.get('start_date', '')
+            end_date = request.args.get('end_date', '')
 
             if not kd_barang:
                 return jsonify({'status': 'error', 'message': 'Kode barang harus diisi'}), 400
 
-            result = SnapshotManager.get_barang_histori(server_key, kd_barang, kd_divisi)
+            result = SnapshotManager.get_barang_histori(server_key, kd_barang, kd_divisi, start_date, end_date)
             if result['status'] != 'success':
                 return jsonify(result), 400
 
@@ -317,7 +321,7 @@ class StokController:
             headers = [
                 'Kd_Divisi', 'Divisi', 'K.Nota', 'Tanggal', 'Transaksi', 
                 'No. Transaksi', 'Kd_Barang', 'Barang', 'Debet', 'Kredit', 
-                'Kd_Satuan', 'Satuan', 'Harga', 'Saldo'
+                'Kd_Satuan', 'Satuan', 'Harga', 'Saldo', 'Konversi'
             ]
             ws.append(headers)
 
@@ -326,13 +330,20 @@ class StokController:
                 cell.font = Font(bold=True)
                 cell.alignment = Alignment(horizontal='center')
 
+            use_konversi = request.args.get('konversi') == '1'
+
             # Data rows with running balance
             saldo = 0
             for row in data:
-                debet = float(row.get('Debet', 0) or 0)
-                kredit = float(row.get('Kredit', 0) or 0)
+                conv = float(row.get('Konversi', 1) or 1) if use_konversi else 1.0
+                debet = float(row.get('Debet', 0) or 0) * conv
+                kredit = float(row.get('Kredit', 0) or 0) * conv
                 saldo += (debet - kredit)
                 
+                satuan = row.get('satuan')
+                if use_konversi and row.get('Konversi', 1) != 1.0:
+                    satuan = f"{satuan} (Conv)"
+
                 ws.append([
                     row.get('Kd_Divisi'), 
                     row.get('Divisi'), 
@@ -345,9 +356,10 @@ class StokController:
                     debet, 
                     kredit, 
                     row.get('kd_satuan'), 
-                    row.get('satuan'), 
+                    satuan, 
                     row.get('harga'),
-                    saldo
+                    saldo,
+                    row.get('Konversi', 1)
                 ])
 
             # Auto-size columns
