@@ -45,7 +45,8 @@ def register_routes(app):
     Route.get('/stok/index', StokController.index_page)
     Route.get('/stok/', StokController.monitoring_page)
     Route.get('/stok/histori', StokController.histori_page)
-    Route.get('/stok/servers', AuthController.admin_required(ServerController.servers_page))
+    Route.get('/stok/servers', AuthController.super_admin_required(ServerController.servers_page))
+    Route.get('/stok/mass-refresh', AuthController.admin_required(StokController.mass_refresh_page))
 
     # ==========================================================
     # API Routes : Authentication
@@ -53,6 +54,14 @@ def register_routes(app):
     Route.get('/auth/login', AuthController.login_page)
     Route.post('/auth/login', AuthController.login)
     Route.get('/auth/logout', AuthController.logout)
+    
+    Route.get('/auth/change-password', AuthController.admin_required(AuthController.change_password_page))
+    Route.post('/auth/change-password', AuthController.admin_required(AuthController.change_password))
+    
+    Route.get('/auth/users', AuthController.super_admin_required(AuthController.users_page))
+    Route.get('/api/users', AuthController.super_admin_required(AuthController.api_get_users))
+    Route.post('/api/users', AuthController.super_admin_required(AuthController.api_create_user))
+    Route.delete('/api/users/<username>', AuthController.super_admin_required(AuthController.api_delete_user))
 
     # ==========================================================
     # API Routes : Server Session
@@ -64,10 +73,15 @@ def register_routes(app):
     # ==========================================================
     # API Routes : Snapshot Management
     # ==========================================================
-    Route.post('/stok/snapshot/refresh', AuthController.admin_required(StokController.trigger_refresh))
+    Route.post('/stok/snapshot/refresh', AuthController.super_admin_required(StokController.trigger_refresh))
     Route.post('/stok/snapshot/delta', AuthController.admin_required(StokController.trigger_delta_refresh))
     Route.get('/stok/snapshot/status', StokController.snapshot_status)
     Route.post('/stok/snapshot/cancel', StokController.cancel_refresh)
+    
+    Route.post('/stok/snapshot/refresh/<path:server_key>', AuthController.super_admin_required(StokController.trigger_refresh_target))
+    Route.post('/stok/snapshot/delta/<path:server_key>', AuthController.admin_required(StokController.trigger_delta_refresh_target))
+    Route.get('/stok/snapshot/status/<path:server_key>', StokController.snapshot_status_target)
+    Route.get('/stok/snapshot/status-all', StokController.global_snapshot_status)
 
     # ==========================================================
     # API Routes : Stok Data (reads from local snapshot)
@@ -81,7 +95,7 @@ def register_routes(app):
     # ==========================================================
     # API Routes : Server Management CRUD
     # ==========================================================
-    Route.get('/stok/api/servers', ServerController.get_all_servers)
-    Route.post('/stok/api/servers', AuthController.admin_required(ServerController.create_server))
-    Route.put('/stok/api/servers/<server_key>', AuthController.admin_required(ServerController.update_server))
-    Route.delete('/stok/api/servers/<server_key>', AuthController.admin_required(ServerController.delete_server))
+    Route.get('/stok/api/servers', AuthController.super_admin_required(ServerController.get_all_servers))
+    Route.post('/stok/api/servers', AuthController.super_admin_required(ServerController.create_server))
+    Route.put('/stok/api/servers/<server_key>', AuthController.super_admin_required(ServerController.update_server))
+    Route.delete('/stok/api/servers/<server_key>', AuthController.super_admin_required(ServerController.delete_server))

@@ -15,4 +15,8 @@ def create_app(config_name=None):
     # Register Laravel-style routes
     register_routes(app)
     
+    # Initialize Database
+    from app.Models.UserModel import UserModel
+    UserModel.initialize_db()
+    
     return app

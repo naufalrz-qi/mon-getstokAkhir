@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Manajemen Pengguna - StokMonitor{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 fade-up">
+    <div>
+        <h3 style="font-weight:800;letter-spacing:-0.03em;margin-bottom:0.25rem">
+            <i class="fas fa-users-cog" style="color:var(--accent)"></i> Manajemen Pengguna
+        </h3>
+        <p style="color:var(--text-muted);font-size:0.85rem;margin:0">Kelola akun Admin dan Super Admin</p>
+    </div>
+</div>
+
+<div class="row fade-up" style="animation-delay:0.1s">
+    <div class="col-md-4 mb-4">
+        <div class="glass-card p-4">
+            <h5 style="font-weight:700;margin-bottom:1.5rem">Tambah Pengguna</h5>
+            <div id="userAlert"></div>
+            
+            <form id="formAddUser">
+                <div class="mb-3">
+                    <label class="form-label">Username</label>
+                    <input type="text" class="form-control" id="formUsername" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Password</label>
+                    <input type="password" class="form-control" id="formPassword" required>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label">Role</label>
+                    <select class="form-select" id="formRole">
+                        <option value="admin">Admin</option>
+                        <option value="super_admin">Super Admin</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-accent w-100" id="btnSave">Simpan Pengguna</button>
+            </form>
+        </div>
+    </div>
+    
+    <div class="col-md-8">
+        <div class="glass-card p-0">
+            <div class="table-responsive">
+                <table class="table mb-0">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Username</th>
+                            <th>Role</th>
+                            <th class="text-end">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTbody">
+                        <tr><td colspan="4" class="text-center py-4"><i class="fas fa-spinner fa-spin"></i> Memuat data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', loadUsers);
+    
+    function loadUsers() {
+        fetch('/api/users')
+            .then(res => res.json())
+            .then(data => {
+                const tbody = document.getElementById('usersTbody');
+                if(data.status === 'success') {
+                    tbody.innerHTML = '';
+                    if(data.data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="4" class="text-center py-3">Tidak ada data</td></tr>';
+                        return;
+                    }
+                    data.data.forEach(user => {
+                        const tr = document.createElement('tr');
+                        const roleBadge = user.role === 'super_admin' ? 
+                            '<span class="badge-glass" style="color:var(--danger)"><i class="fas fa-crown"></i> Super Admin</span>' : 
+                            '<span class="badge-glass" style="color:var(--success)"><i class="fas fa-user-shield"></i> Admin</span>';
+                            
+                        const delBtn = user.username === 'admin' ? '' : `<button class="btn btn-glass btn-sm text-danger" onclick="deleteUser('${user.username}')"><i class="fas fa-trash"></i></button>`;
+                        
+                        tr.innerHTML = `
+                            <td>${user.id}</td>
+                            <td style="font-weight:600">${user.username}</td>
+                            <td>${roleBadge}</td>
+                            <td class="text-end">${delBtn}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
+            });
+    }
+
+    document.getElementById('formAddUser').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('btnSave');
+        const alertBox = document.getElementById('userAlert');
+        
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menyimpan...';
+        
+        fetch('/api/users', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                username: document.getElementById('formUsername').value,
+                password: document.getElementById('formPassword').value,
+                role: document.getElementById('formRole').value
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if(data.status === 'success') {
+                alertBox.innerHTML = `<div class="alert alert-success py-2 px-3 mb-3" style="font-size:0.8rem">${data.message}</div>`;
+                document.getElementById('formAddUser').reset();
+                loadUsers();
+            } else {
+                alertBox.innerHTML = `<div class="alert alert-danger py-2 px-3 mb-3" style="font-size:0.8rem">${data.message}</div>`;
+            }
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = 'Simpan Pengguna';
+        });
+    });
+
+    function deleteUser(username) {
+        if(!confirm(`Yakin ingin menghapus ${username}?`)) return;
+        
+        fetch(`/api/users/${username}`, { method: 'DELETE' })
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    loadUsers();
+                } else {
+                    alert(data.message);
+                }
+            });
+    }
+</script>
+{% endblock %}

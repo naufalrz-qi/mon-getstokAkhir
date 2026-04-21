@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% block title %}Mass Refresh Server - StokMonitor{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 fade-up">
+    <div>
+        <h3 style="font-weight:800;letter-spacing:-0.03em;margin-bottom:0.25rem">
+            <i class="fas fa-sync" style="color:var(--accent)"></i> Mass Refresh Server
+        </h3>
+        <p style="color:var(--text-muted);font-size:0.85rem;margin:0">Eksekusi pencarian data massal (Parallel Execution) pada seluruh cabang.</p>
+    </div>
+    <div class="d-flex gap-2 mt-2 mt-md-0">
+        <button class="btn btn-warning btn-sm" id="btn-quick-refresh-all" onclick="startMassRefresh(true)" style="color: #fff;">
+            <i class="fas fa-bolt fa-sm"></i> Mulai Quick Update (Semua Cabang)
+        </button>
+        {% if session.get('role') == 'super_admin' %}
+        <button class="btn btn-accent btn-sm" id="btn-refresh-all" onclick="startMassRefresh(false)">
+            <i class="fas fa-sync fa-sm"></i> Mulai Full Refresh
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+<div id="alert-container"></div>
+
+<div class="glass-card p-0 fade-up" style="animation-delay:0.1s">
+    <div class="table-responsive">
+        <table class="table mb-0" id="servers-table">
+            <thead>
+                <tr>
+                    <th style="width:5%">#</th>
+                    <th style="width:25%">Nama Cabang</th>
+                    <th style="width:15%">Host</th>
+                    <th style="width:45%">Status Polling (Realtime)</th>
+                    <th style="width:10%" class="text-end">Aksi</th>
+                </tr>
+            </thead>
+            <tbody id="servers-tbody">
+                <tr><td colspan="5" class="text-center py-4"><i class="fas fa-spinner fa-spin"></i> Memuat daftar cabang...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let serversData = [];
+    let pollingIntervals = {};
+    let isMassRefreshing = false;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadServers();
+    });
+
+    function loadServers() {
+        fetch('/stok/server-list')
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    serversData = data.servers || [];
+                    renderServers(serversData);
+                    // Initial check
+                    serversData.forEach(s => checkStatus(s.key));
+                } else {
+                    showAlert('error', 'Gagal memuat daftar server.');
+                }
+            })
+            .catch(err => {
+                showAlert('error', 'Koneksi error: ' + err.message);
+            });
+    }
+
+    function renderServers(servers) {
+        const tbody = document.getElementById('servers-tbody');
+        tbody.innerHTML = '';
+        if (servers.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4">Belum ada server yang dikonfigurasi.</td></tr>`;
+            return;
+        }
+
+        servers.forEach((s, idx) => {
+            const tr = document.createElement('tr');
+            tr.id = `row-${s.key}`;
+            tr.innerHTML = `
+                <td>${idx + 1}</td>
+                <td style="font-weight:600">${s.name}</td>
+                <td style="color:var(--text-secondary);font-size:0.8rem">${s.host}</td>
+                <td>
+                    <div class="d-flex align-items-center gap-2">
+                        <div style="flex:1">
+                            <div style="background:var(--bg-glass);border-radius:6px;height:6px;overflow:hidden;margin-bottom:4px">
+                                <div id="progress-${s.key}" style="height:100%;background:linear-gradient(90deg,var(--accent),var(--success));border-radius:6px;width:0%;transition:width 0.3s ease"></div>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span id="msg-${s.key}" style="font-size:0.75rem;color:var(--text-muted)">Menunggu respon...</span>
+                                <span id="badge-${s.key}" class="badge-glass" style="font-size:0.6rem">Idle</span>
+                            </div>
+                        </div>
+                    </div>
+                </td>
+                <td class="text-end">
+                    <div class="d-flex justify-content-end gap-1">
+                        <button class="btn btn-glass btn-sm text-warning" id="btn-quick-indiv-${s.key}" onclick="startSingleRefresh('${s.key}', true)" title="Quick Update (Delta)"><i class="fas fa-bolt"></i></button>
+                        {% if session.get('role') == 'super_admin' %}
+                        <button class="btn btn-glass btn-sm" id="btn-indiv-${s.key}" onclick="startSingleRefresh('${s.key}', false)" title="Full Refresh">Refresh</button>
+                        {% endif %}
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function startMassRefresh(isQuick = false) {
+        if(isMassRefreshing) return;
+        isMassRefreshing = true;
+        
+        const btnAll = document.getElementById('btn-refresh-all');
+        const btnQuickAll = document.getElementById('btn-quick-refresh-all');
+        const activeBtn = isQuick ? btnQuickAll : btnAll;
+        
+        btnAll.disabled = true;
+        btnQuickAll.disabled = true;
+        const orgText = activeBtn.innerHTML;
+        activeBtn.innerHTML = '<i class="fas fa-spinner fa-spin fa-sm"></i> Mengeksekusi Paralel...';
+        
+        const promises = serversData.map(s => {
+            return startSingleRefresh(s.key, isQuick);
+        });
+
+        Promise.all(promises).then(() => {
+            isMassRefreshing = false;
+            btnAll.disabled = false;
+            btnQuickAll.disabled = false;
+            activeBtn.innerHTML = '<i class="fas fa-check-circle fa-sm"></i> Selesai (Disinkronkan)';
+            setTimeout(() => { activeBtn.innerHTML = orgText; }, 3000);
+            showAlert('success', 'Semua Eksekusi Paralel telah Selesai');
+        });
+    }
+
+    // Returns a promise that resolves when the snapshot is fully ready or errored
+    function startSingleRefresh(serverKey, isQuick = false) {
+        return new Promise((resolve) => {
+            const btn = document.getElementById(`btn-indiv-${serverKey}`);
+            const btnQ = document.getElementById(`btn-quick-indiv-${serverKey}`);
+            if(btn) btn.disabled = true;
+            if(btnQ) btnQ.disabled = true;
+            if(!isQuick && btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            if(isQuick && btnQ) btnQ.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+            const endpoint = isQuick ? `/stok/snapshot/delta/${serverKey}` : `/stok/snapshot/refresh/${serverKey}`;
+
+            fetch(endpoint, { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'error') {
+                        updateRowUI(serverKey, { state: 'error', message: data.message });
+                        if(btn) { btn.disabled = false; btn.innerHTML = 'Refresh'; }
+                        if(btnQ) { btnQ.disabled = false; btnQ.innerHTML = '<i class="fas fa-bolt"></i>'; }
+                        resolve();
+                    } else if (data.status === 'already_running') {
+                        startPolling(serverKey, resolve);
+                    } else {
+                        startPolling(serverKey, resolve);
+                    }
+                })
+                .catch(err => {
+                    updateRowUI(serverKey, { state: 'error', message: err.message });
+                    if(btn) { btn.disabled = false; btn.innerHTML = 'Refresh'; }
+                    if(btnQ) { btnQ.disabled = false; btnQ.innerHTML = '<i class="fas fa-bolt"></i>'; }
+                    resolve();
+                });
+        });
+    }
+
+    function checkStatus(serverKey, onComplete = null) {
+        fetch(`/stok/snapshot/status/${serverKey}`)
+            .then(r => r.json())
+            .then(data => {
+                updateRowUI(serverKey, data);
+            })
+            .catch(() => {});
+    }
+
+    function startPolling(serverKey, onComplete) {
+        if (pollingIntervals[serverKey]) clearInterval(pollingIntervals[serverKey]);
+        
+        pollingIntervals[serverKey] = setInterval(() => {
+            fetch(`/stok/snapshot/status/${serverKey}`)
+                .then(r => r.json())
+                .then(data => {
+                    updateRowUI(serverKey, data);
+                    if (data.state === 'ready' || data.state === 'error' || data.state === 'cancelled') {
+                        clearInterval(pollingIntervals[serverKey]);
+                        delete pollingIntervals[serverKey];
+                        const btn = document.getElementById(`btn-indiv-${serverKey}`);
+                        const btnQ = document.getElementById(`btn-quick-indiv-${serverKey}`);
+                        if(btn) { btn.disabled = false; btn.innerHTML = 'Refresh'; }
+                        if(btnQ) { btnQ.disabled = false; btnQ.innerHTML = '<i class="fas fa-bolt"></i>'; }
+                        if(onComplete) onComplete();
+                    }
+                })
+                .catch(err => {
+                    clearInterval(pollingIntervals[serverKey]);
+                    delete pollingIntervals[serverKey];
+                    if(onComplete) onComplete();
+                });
+        }, 1500);
+    }
+
+    function updateRowUI(serverKey, data) {
+        const msg = document.getElementById(`msg-${serverKey}`);
+        const badge = document.getElementById(`badge-${serverKey}`);
+        const progress = document.getElementById(`progress-${serverKey}`);
+        
+        if(!msg || !badge || !progress) return;
+
+        msg.textContent = data.message || '';
+        
+        if (['starting', 'fetching', 'writing'].includes(data.state)) {
+            badge.textContent = data.state.toUpperCase();
+            badge.style.background = 'rgba(245,158,11,0.15)';
+            badge.style.color = 'var(--warning)';
+            progress.style.width = (data.progress || 0) + '%';
+            progress.style.background = 'linear-gradient(90deg,var(--warning),var(--danger))';
+        } else if (data.state === 'ready') {
+            const rowCount = data.mem_count || (data.snapshot_info && data.snapshot_info.row_count) || 0;
+            badge.textContent = `READY (${rowCount} ITEM)`;
+            badge.style.background = 'rgba(16,185,129,0.15)';
+            badge.style.color = 'var(--success)';
+            progress.style.width = '100%';
+            progress.style.background = 'linear-gradient(90deg,var(--accent),var(--success))';
+        } else if (data.state === 'error') {
+            badge.textContent = 'ERROR';
+            badge.style.background = 'rgba(239,68,68,0.15)';
+            badge.style.color = 'var(--danger)';
+            progress.style.width = '100%';
+            progress.style.background = 'rgba(239,68,68,0.5)';
+        } else {
+            badge.textContent = 'IDLE';
+            badge.style.background = 'var(--bg-glass)';
+            badge.style.color = 'var(--text-muted)';
+            progress.style.width = '0%';
+        }
+    }
+
+    function showAlert(type, msg) {
+        const c = document.getElementById('alert-container');
+        const cls = type === 'error' ? 'danger' : type === 'warning' ? 'warning' : 'success';
+        c.innerHTML = `<div class="alert alert-glass alert-${cls} alert-dismissible fade show"><i class="fas fa-${type==='error'?'exclamation-circle':type==='warning'?'exclamation-triangle':'check-circle'}"></i> ${msg}<button class="btn-close" data-bs-dismiss="alert"></button></div>`;
+        if (type !== 'error') setTimeout(() => { const a = c.querySelector('.alert'); if(a) a.remove(); }, 5000);
+    }
+</script>
+{% endblock %}

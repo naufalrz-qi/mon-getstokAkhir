@@ -83,6 +83,26 @@ BEGIN
       AND CAST(t.tanggal AS DATE) <= CAST(@tanggal AS DATE);
 END
 
+-- New opname stok
+IF OBJECT_ID('t_opname_stok') IS NOT NULL
+BEGIN
+    INSERT INTO #delta
+    SELECT kd_divisi, kd_barang, qty AS debet, 0 AS kredit, kd_satuan, 'opname_in'
+    FROM t_opname_stok (NOLOCK)
+    WHERE status = 2
+      AND tanggal_server > @last_refresh
+      AND tanggal > dbo.GetTanggalTerakhirTutupBuku()
+      AND CAST(tanggal AS DATE) <= CAST(@tanggal AS DATE);
+
+    INSERT INTO #delta
+    SELECT kd_divisi, kd_barang, 0 AS debet, qty AS kredit, kd_satuan, 'opname_out'
+    FROM t_opname_stok (NOLOCK)
+    WHERE status <> 2
+      AND tanggal_server > @last_refresh
+      AND tanggal > dbo.GetTanggalTerakhirTutupBuku()
+      AND CAST(tanggal AS DATE) <= CAST(@tanggal AS DATE);
+END
+
 -- Return all delta rows
 SELECT * FROM #delta;
 

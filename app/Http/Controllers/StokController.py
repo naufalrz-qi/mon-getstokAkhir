@@ -40,6 +40,11 @@ class StokController:
             return render_template('index.html')
         return render_template('histori.html')
 
+    @staticmethod
+    def mass_refresh_page():
+        """HTML Page: Mass refresh semua server"""
+        return render_template('mass_refresh.html')
+
     # ──────────── Server Session APIs ────────────
 
     @staticmethod
@@ -140,6 +145,53 @@ class StokController:
 
         result = SnapshotManager.cancel_refresh(server_key)
         return jsonify(result)
+
+    @staticmethod
+    def trigger_refresh_target(server_key):
+        """API: Trigger snapshot refresh for a specific server (Admin Mass Refresh)"""
+        try:
+            if not server_key:
+                return jsonify({'status': 'error', 'message': 'Server key diperlukan'}), 400
+
+            tanggal = request.args.get('tanggal', datetime.now().strftime('%Y-%m-%d'))
+            result = SnapshotManager.trigger_refresh(server_key, tanggal)
+            return jsonify(result)
+
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def trigger_delta_refresh_target(server_key):
+        """API: Quick update (delta) for a specific server"""
+        try:
+            if not server_key:
+                return jsonify({'status': 'error', 'message': 'Server key diperlukan'}), 400
+
+            tanggal = request.args.get('tanggal', datetime.now().strftime('%Y-%m-%d'))
+            result = SnapshotManager.trigger_delta_refresh(server_key, tanggal)
+            return jsonify(result)
+
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def snapshot_status_target(server_key):
+        """API: Get snapshot status for a specific server"""
+        if not server_key:
+            return jsonify({'state': 'empty', 'has_snapshot': False})
+
+        status = SnapshotManager.get_status(server_key)
+        return jsonify(status)
+
+    @staticmethod
+    def global_snapshot_status():
+        """API: Get snapshot status for ALL servers (for global broadcasting)"""
+        servers = db_manager.get_available_servers()
+        statuses = {}
+        for s in servers:
+            sk = s['key']
+            statuses[sk] = SnapshotManager.get_status(sk)
+        return jsonify({'status': 'success', 'data': statuses})
 
     # ──────────── Data APIs ────────────
 

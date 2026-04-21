@@ -235,11 +235,21 @@
 <script>
     let snapshotReady = false;
     let pollTimer = null;
+    let globalPollTimer = null;
+
+    function startGlobalPolling() {
+        if (!globalPollTimer) {
+            globalPollTimer = setInterval(() => {
+                if (!pollTimer) checkSnapshotStatus();
+            }, 12000);
+        }
+    }
 
     // ──────────── Init ────────────
     document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('filter-search').focus();
         checkSnapshotStatus();
+        startGlobalPolling();
     });
 
     document.getElementById('filter-search').addEventListener('keydown', e => {

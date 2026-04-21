@@ -56,7 +56,7 @@ class DatabaseManager:
             
             connection_string = self.get_connection_string(server_key)
             conn = pyodbc.connect(connection_string)
-            conn.setdecoding(pyodbc.SQL_CHAR, encoding='utf-8')
+            conn.setdecoding(pyodbc.SQL_CHAR, encoding='cp1252')
             conn.setdecoding(pyodbc.SQL_WCHAR, encoding='utf-8')
             
             self._connections[server_key] = conn
@@ -73,7 +73,7 @@ class DatabaseManager:
         try:
             connection_string = self.get_connection_string(server_key)
             conn = pyodbc.connect(connection_string)
-            conn.setdecoding(pyodbc.SQL_CHAR, encoding='utf-8')
+            conn.setdecoding(pyodbc.SQL_CHAR, encoding='cp1252')
             conn.setdecoding(pyodbc.SQL_WCHAR, encoding='utf-8')
             return conn
         except pyodbc.DatabaseError as e:
