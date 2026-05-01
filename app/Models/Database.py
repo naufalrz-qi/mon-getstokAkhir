@@ -51,7 +51,7 @@ class DatabaseManager:
                 try:
                     conn.cursor().execute("SELECT 1")
                     return conn
-                except:
+                except Exception:
                     del self._connections[server_key]
             
             connection_string = self.get_connection_string(server_key)
@@ -154,7 +154,7 @@ class DatabaseManager:
         for conn in self._connections.values():
             try:
                 conn.close()
-            except:
+            except Exception:
                 pass
         self._connections.clear()
     

@@ -1,0 +1,618 @@
+{% extends "base.html" %}
+{% block title %}Opname Stok - StokMonitor{% endblock %}
+
+{% block extra_css %}
+/* ── POS Split Layout ── */
+.pos-container {
+    display: flex;
+    gap: 1.25rem;
+    min-height: calc(100vh - 180px);
+}
+.pos-left {
+    flex: 1 1 55%;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+.pos-right {
+    flex: 0 0 42%;
+    min-width: 0;
+    position: sticky;
+    top: 80px;
+    align-self: flex-start;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+}
+
+/* ── Search Bar POS ── */
+.pos-search-bar {
+    background: var(--bg-card);
+    border: 2px solid var(--border-glass);
+    border-radius: 14px;
+    padding: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: border-color 0.2s;
+}
+.pos-search-bar:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-glow);
+}
+.pos-search-bar .search-icon {
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--accent), var(--accent-light));
+    border-radius: 10px;
+    color: #fff;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+.pos-search-bar input {
+    border: none;
+    background: transparent;
+    outline: none;
+    flex: 1;
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    padding: 0.5rem;
+}
+.pos-search-bar input::placeholder { color: var(--text-muted); }
+
+/* ── Item List ── */
+.item-list {
+    flex: 1;
+    overflow-y: auto;
+    max-height: calc(100vh - 280px);
+    margin-top: 0.75rem;
+}
+.item-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem 1rem;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    margin-bottom: 2px;
+}
+.item-row:hover {
+    background: var(--accent-glow);
+    border-color: rgba(79,70,229,0.15);
+}
+.item-row.active {
+    background: var(--accent-glow);
+    border-color: var(--accent);
+    box-shadow: 0 2px 12px rgba(79,70,229,0.12);
+}
+.item-row .item-stok-badge {
+    min-width: 52px;
+    text-align: center;
+    font-weight: 700;
+    font-size: 0.95rem;
+    padding: 0.3rem 0.5rem;
+    border-radius: 8px;
+    flex-shrink: 0;
+}
+.stok-ok { background: rgba(16,185,129,0.1); color: var(--success); }
+.stok-warn { background: rgba(245,158,11,0.1); color: var(--warning); }
+.stok-danger { background: rgba(239,68,68,0.1); color: var(--danger); }
+
+.item-row .item-info {
+    flex: 1;
+    min-width: 0;
+}
+.item-row .item-name {
+    font-weight: 600;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.item-row .item-meta {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.item-row .item-code {
+    font-family: 'Courier New', monospace;
+    font-size: 0.7rem;
+    color: var(--accent-light);
+    background: var(--accent-glow);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+/* ── Detail Panel ── */
+.detail-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border-glass);
+    border-radius: 16px;
+    overflow: hidden;
+    animation: slideIn 0.25s ease;
+}
+@keyframes slideIn {
+    from { opacity: 0; transform: translateX(12px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+.detail-header {
+    padding: 1.25rem;
+    border-bottom: 1px solid var(--border-glass);
+    background: linear-gradient(135deg, rgba(79,70,229,0.04), rgba(99,102,241,0.02));
+}
+.detail-header .item-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+.detail-section {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+.detail-section:last-child { border-bottom: none; }
+.detail-section-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.divisi-stok-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.55rem 0.75rem;
+    border-radius: 10px;
+    margin-bottom: 4px;
+    background: rgba(0,0,0,0.015);
+    transition: background 0.15s;
+}
+.divisi-stok-row:hover { background: rgba(0,0,0,0.035); }
+
+/* ── Empty / Welcome ── */
+.detail-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 2rem;
+    text-align: center;
+    color: var(--text-muted);
+    min-height: 300px;
+}
+.detail-empty .empty-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    background: var(--accent-glow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: var(--accent-light);
+    margin-bottom: 1rem;
+}
+
+/* ── Result count ── */
+.result-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+/* ── Responsive ── */
+@media (max-width: 992px) {
+    .pos-container { flex-direction: column; }
+    .pos-right { position: static; max-height: none; flex: none; }
+    .item-list { max-height: 50vh; }
+}
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 fade-up">
+    <div>
+        <h3 style="font-weight:800;letter-spacing:-0.03em;margin-bottom:0.15rem">
+            <i class="fas fa-clipboard-check" style="color:var(--accent)"></i> Opname & Cek Stok
+        </h3>
+        <p style="color:var(--text-muted);font-size:0.8rem;margin:0">Pilih barang untuk melihat stok per divisi & satuan</p>
+    </div>
+    <div class="d-flex gap-2 mt-2 mt-md-0">
+        <select id="filter-divisi" class="form-select form-select-sm" style="width:auto;min-width:130px" onchange="doSearch()">
+            <option value="">Semua Divisi</option>
+        </select>
+        <a href="/stok/index" class="btn btn-glass btn-sm">
+            <i class="fas fa-exchange-alt fa-sm"></i> Ganti Server
+        </a>
+    </div>
+</div>
+
+<div id="alert-container"></div>
+
+<!-- POS Layout -->
+<div class="pos-container fade-up" style="animation-delay:0.1s">
+    <!-- LEFT: Search + Item List -->
+    <div class="pos-left">
+        <!-- Search Bar -->
+        <div class="pos-search-bar">
+            <div class="search-icon"><i class="fas fa-barcode"></i></div>
+            <input type="text" id="pos-search" placeholder="Cari nama atau kode barang..." autocomplete="off">
+            <select id="filter-type" class="form-select form-select-sm" style="width:auto;border:none;background:transparent;font-size:0.8rem;color:var(--text-secondary)">
+                <option value="kode">Kode</option>
+                <option value="nama">Nama</option>
+            </select>
+        </div>
+
+        <!-- Result Bar -->
+        <div class="result-bar">
+            <span id="result-count">Ketik untuk mencari barang</span>
+            <span id="search-speed" style="display:none"><i class="fas fa-bolt fa-xs" style="color:var(--warning)"></i> <span id="speed-ms">0</span>ms</span>
+        </div>
+
+        <!-- Item List -->
+        <div class="item-list glass-card p-2" id="item-list-container">
+            <div id="item-list-welcome" class="text-center py-4" style="color:var(--text-muted)">
+                <i class="fas fa-search" style="font-size:1.5rem;opacity:0.3"></i>
+                <p class="mt-2 mb-0" style="font-size:0.8rem">Ketik nama/kode barang lalu tekan <kbd style="background:var(--bg-glass);border:1px solid var(--border-glass);padding:0.1rem 0.3rem;border-radius:3px;font-size:0.7rem">Enter</kbd></p>
+            </div>
+            <div id="item-list-body" style="display:none"></div>
+            <div id="item-list-empty" style="display:none" class="text-center py-4">
+                <i class="fas fa-inbox" style="font-size:1.5rem;color:var(--text-muted);opacity:0.4"></i>
+                <p class="mt-2 mb-0" style="font-size:0.8rem;color:var(--text-muted)">Tidak ada barang ditemukan</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT: Detail Panel -->
+    <div class="pos-right" id="detail-wrapper">
+        <div class="detail-panel" id="detail-panel-empty">
+            <div class="detail-empty">
+                <div class="empty-icon"><i class="fas fa-hand-pointer"></i></div>
+                <p style="font-weight:600;font-size:0.9rem;color:var(--text-primary);margin-bottom:0.3rem">Pilih Barang</p>
+                <p style="font-size:0.78rem">Klik salah satu barang dari daftar untuk melihat detail stok & histori opname</p>
+            </div>
+        </div>
+        <div class="detail-panel" id="detail-panel-content" style="display:none">
+            <!-- Filled by JS -->
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let searchTimeout = null;
+let currentItems = [];
+let selectedKdBarang = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    const input = document.getElementById('pos-search');
+    input.focus();
+
+    input.addEventListener('input', () => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => doSearch(), 350);
+    });
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { clearTimeout(searchTimeout); doSearch(); }
+    });
+
+    // Load divisi list
+    loadDivisiList();
+});
+
+function loadDivisiList() {
+    fetch('/stok/api/divisi-list')
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success' && data.divisi_list) {
+                const sel = document.getElementById('filter-divisi');
+                data.divisi_list.forEach(d => {
+                    const o = document.createElement('option');
+                    o.value = d; o.textContent = d;
+                    sel.appendChild(o);
+                });
+            }
+        }).catch(() => {});
+}
+
+function doSearch() {
+    const val = document.getElementById('pos-search').value.trim();
+    if (!val) {
+        document.getElementById('item-list-body').style.display = 'none';
+        document.getElementById('item-list-welcome').style.display = 'block';
+        document.getElementById('item-list-empty').style.display = 'none';
+        document.getElementById('result-count').textContent = 'Ketik untuk mencari barang';
+        return;
+    }
+
+    const type = document.getElementById('filter-type').value;
+    const divisi = document.getElementById('filter-divisi').value;
+    const searchVal = val.includes('%') ? val : val + '%';
+
+    const url = new URL('/stok/monitoring', location.origin);
+    if (type === 'kode') url.searchParams.set('search_kode', searchVal);
+    else url.searchParams.set('search_nama', searchVal);
+    if (divisi) url.searchParams.set('divisi', divisi);
+
+    const t0 = performance.now();
+
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            const ms = Math.round(performance.now() - t0);
+            document.getElementById('search-speed').style.display = 'inline';
+            document.getElementById('speed-ms').textContent = ms;
+
+            if (data.status === 'success' && data.data) {
+                currentItems = aggregateItems(data.data);
+                renderItemList(currentItems);
+            } else if (data.status === 'no_snapshot') {
+                showAlert('warning', data.message || 'Belum ada snapshot.');
+                currentItems = [];
+                renderItemList([]);
+            } else {
+                showAlert('danger', data.message || 'Gagal');
+                currentItems = [];
+                renderItemList([]);
+            }
+        })
+        .catch(err => { showAlert('danger', err.message); });
+}
+
+function aggregateItems(rows) {
+    // Group by kd_barang, sum stok across divisi
+    const map = {};
+    rows.forEach(r => {
+        const kd = r['Kode Barang'];
+        if (!map[kd]) {
+            map[kd] = {
+                kd_barang: kd,
+                barang: r['Barang'],
+                kategori: r['Kategori'] || '',
+                merk: r['Merk'] || '',
+                total_stok: 0,
+                harga_jual: r['Harga Jual'] || 0,
+                divisi_count: 0,
+            };
+        }
+        map[kd].total_stok += parseFloat(r['Stok Akhir']) || 0;
+        map[kd].divisi_count++;
+    });
+    return Object.values(map).sort((a,b) => a.barang.localeCompare(b.barang));
+}
+
+function renderItemList(items) {
+    const body = document.getElementById('item-list-body');
+    const welcome = document.getElementById('item-list-welcome');
+    const empty = document.getElementById('item-list-empty');
+
+    welcome.style.display = 'none';
+
+    if (!items.length) {
+        body.style.display = 'none';
+        empty.style.display = 'block';
+        document.getElementById('result-count').textContent = 'Tidak ada hasil';
+        return;
+    }
+
+    empty.style.display = 'none';
+    body.style.display = 'block';
+    document.getElementById('result-count').textContent = `${items.length} barang ditemukan`;
+
+    body.innerHTML = '';
+    items.forEach(item => {
+        const stok = item.total_stok;
+        const cls = stok <= 0 ? 'stok-danger' : stok < 10 ? 'stok-warn' : 'stok-ok';
+        const isActive = selectedKdBarang === item.kd_barang ? ' active' : '';
+
+        const div = document.createElement('div');
+        div.className = `item-row${isActive}`;
+        div.setAttribute('data-kd', item.kd_barang);
+        div.innerHTML = `
+            <div class="item-stok-badge ${cls}">${fmtStok(stok)}</div>
+            <div class="item-info">
+                <div class="item-name">${item.barang}</div>
+                <div class="item-meta">${item.kategori}${item.merk ? ' · ' + item.merk : ''} · ${item.divisi_count} divisi</div>
+            </div>
+            <span class="item-code">${item.kd_barang}</span>
+        `;
+        div.addEventListener('click', () => selectItem(item.kd_barang));
+        body.appendChild(div);
+    });
+}
+
+function selectItem(kd_barang) {
+    selectedKdBarang = kd_barang;
+
+    // Highlight in list
+    document.querySelectorAll('.item-row').forEach(el => {
+        el.classList.toggle('active', el.getAttribute('data-kd') === kd_barang);
+    });
+
+    // Show loading in detail
+    const panel = document.getElementById('detail-panel-content');
+    document.getElementById('detail-panel-empty').style.display = 'none';
+    panel.style.display = 'block';
+    panel.innerHTML = `<div class="text-center py-5"><div class="loader mx-auto"></div><p class="mt-2" style="font-size:0.8rem;color:var(--text-muted)">Memuat detail...</p></div>`;
+
+    // Fetch stock detail + opname in parallel
+    Promise.all([
+        fetch(`/stok/api/item-stock/${encodeURIComponent(kd_barang)}`).then(r => r.json()),
+        fetch(`/stok/api/opname?search_kode=${encodeURIComponent(kd_barang)}`).then(r => r.json()),
+    ]).then(([stockData, opnameData]) => {
+        renderDetailPanel(stockData, opnameData);
+    }).catch(err => {
+        panel.innerHTML = `<div class="text-center py-4" style="color:var(--danger)"><i class="fas fa-exclamation-triangle"></i><p class="mt-2">${err.message}</p></div>`;
+    });
+}
+
+function renderDetailPanel(stockData, opnameData) {
+    const panel = document.getElementById('detail-panel-content');
+    const info = stockData.info || {};
+    const divisiList = stockData.divisi_list || [];
+    const satuans = stockData.satuans || [];
+    const opnameRows = (opnameData.status === 'success' ? opnameData.data : []) || [];
+
+    // Find base satuan (jumlah=1)
+    const baseSatuan = satuans.find(s => s.jumlah === 1);
+    const baseName = baseSatuan ? (baseSatuan.nama_satuan || baseSatuan.kd_satuan) : 'PCS';
+
+    // Build satuan options
+    let satuanOpts = '';
+    if (satuans.length) {
+        satuans.sort((a,b) => a.jumlah - b.jumlah);
+        satuans.forEach(s => {
+            const sel = s.jumlah === 1 ? 'selected' : '';
+            const satName = s.nama_satuan || s.kd_satuan;
+            satuanOpts += `<option value="${s.jumlah}" ${sel}>${satName}</option>`;
+        });
+    } else {
+        satuanOpts = `<option value="1">${baseName}</option>`;
+    }
+
+    // Detail header
+    let html = `
+        <div class="detail-header">
+            <div class="item-title">${info.barang || '-'}</div>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem">
+                <span class="badge-glass">${info.kd_barang || ''}</span>
+                ${info.kategori ? `<span class="badge-glass">${info.kategori}</span>` : ''}
+                ${info.merk ? `<span class="badge-glass">${info.merk}</span>` : ''}
+                ${info.model ? `<span class="badge-glass">${info.model}</span>` : ''}
+            </div>
+            <div style="margin-top:0.6rem;display:flex;align-items:center;gap:0.75rem">
+                <div>
+                    <span style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted)">Total Stok</span>
+                    <div style="font-size:1.5rem;font-weight:800;background:linear-gradient(135deg,var(--accent-light),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent" id="detail-total-stok">${fmtStok(info.total_stok || 0)}</div>
+                </div>
+                <div style="margin-left:auto">
+                    <label style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted)">Satuan</label>
+                    <select class="form-select form-select-sm" id="detail-satuan-select" onchange="convertDetailSatuan()" style="min-width:100px;font-weight:600">
+                        ${satuanOpts}
+                    </select>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Stok per Divisi
+    html += `<div class="detail-section">
+        <div class="detail-section-title"><i class="fas fa-sitemap fa-xs"></i> Stok per Divisi</div>`;
+
+    if (divisiList.length === 0) {
+        html += `<p style="font-size:0.8rem;color:var(--text-muted);text-align:center">Tidak ada data divisi</p>`;
+    } else {
+        divisiList.forEach(d => {
+            const stok = d.stok_akhir || 0;
+            const cls = stok <= 0 ? 'stok-danger' : stok < 10 ? 'stok-warn' : 'stok-ok';
+            html += `
+                <div class="divisi-stok-row">
+                    <div>
+                        <div style="font-weight:600;font-size:0.82rem">${d.divisi || d.kd_divisi}</div>
+                        <div style="font-size:0.68rem;color:var(--text-muted)">H.Jual: ${fmtRp(d.harga_jual)}</div>
+                    </div>
+                    <div class="item-stok-badge ${cls}" data-base-stok="${stok}">${fmtStok(stok)}</div>
+                </div>`;
+        });
+    }
+    html += `</div>`;
+
+    // Quick Actions
+    html += `<div class="detail-section" style="padding:0.75rem 1.25rem">
+        <div class="d-flex gap-2">
+            <a href="/stok/histori?kd_barang=${encodeURIComponent(info.kd_barang || '')}" class="btn btn-accent btn-sm" style="flex:1;font-size:0.78rem">
+                <i class="fas fa-history fa-sm"></i> Histori Pergerakan
+            </a>
+        </div>
+    </div>`;
+
+    // Histori Opname
+    html += `<div class="detail-section">
+        <div class="detail-section-title"><i class="fas fa-clipboard-list fa-xs"></i> Histori Opname <span class="badge-glass" style="font-size:0.6rem">${opnameRows.length}</span></div>`;
+
+    if (opnameRows.length === 0) {
+        html += `<p style="font-size:0.8rem;color:var(--text-muted);text-align:center">Tidak ada histori opname</p>`;
+    } else {
+        html += `<div style="max-height:250px;overflow-y:auto">
+            <table class="table table-sm mb-0" style="font-size:0.75rem">
+                <thead><tr>
+                    <th>Tanggal</th><th>Divisi</th><th class="text-end">Qty</th>
+                    <th>Status</th><th>Petugas</th>
+                </tr></thead><tbody>`;
+        opnameRows.forEach(r => {
+            let badge = 'bg-secondary';
+            if ((r.status_text || '').includes('(+)')) badge = 'bg-success';
+            else if (r.status_text === 'Hilang' || r.status_text === 'Rusak' || (r.status_text || '').includes('(-)')) badge = 'bg-danger';
+            html += `<tr>
+                <td>${fmtDate(r.tanggal)}</td>
+                <td>${r.divisi || '-'}</td>
+                <td class="text-end" style="font-weight:700">${r.qty}</td>
+                <td><span class="badge ${badge}" style="font-size:0.65rem">${r.status_text || '-'}</span></td>
+                <td style="font-size:0.7rem">${r.petugas || '-'}</td>
+            </tr>`;
+        });
+        html += `</tbody></table></div>`;
+    }
+    html += `</div>`;
+
+    panel.innerHTML = html;
+}
+
+function convertDetailSatuan() {
+    const sel = document.getElementById('detail-satuan-select');
+    const factor = parseFloat(sel.value) || 1;
+
+    // Update total
+    const totalEl = document.getElementById('detail-total-stok');
+    const baseTotal = document.querySelectorAll('.divisi-stok-row [data-base-stok]');
+    let sum = 0;
+
+    baseTotal.forEach(el => {
+        const base = parseFloat(el.getAttribute('data-base-stok')) || 0;
+        const converted = base / factor;
+        el.textContent = fmtStok(converted);
+        sum += converted;
+
+        // Update color class
+        el.className = 'item-stok-badge ' + (converted <= 0 ? 'stok-danger' : converted < 10 ? 'stok-warn' : 'stok-ok');
+        el.setAttribute('data-base-stok', el.getAttribute('data-base-stok')); // keep original
+    });
+
+    totalEl.textContent = fmtStok(sum);
+}
+
+// ── Helpers ──
+function fmtStok(v) {
+    v = parseFloat(v) || 0;
+    return Number.isInteger(v) ? v.toString() : v.toFixed(2);
+}
+function fmtRp(v) {
+    return new Intl.NumberFormat('id-ID', {style:'currency',currency:'IDR',minimumFractionDigits:0}).format(v||0);
+}
+function fmtDate(d) {
+    if (!d) return '-';
+    return new Date(d).toLocaleDateString('id-ID', {day:'2-digit',month:'short',year:'numeric'});
+}
+function showAlert(type, msg) {
+    const c = document.getElementById('alert-container');
+    c.innerHTML = `<div class="alert alert-glass alert-${type} alert-dismissible fade show mb-3 fade-up">${msg}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`;
+    if (type !== 'danger') setTimeout(() => { const a = c.querySelector('.alert'); if(a) a.remove(); }, 4000);
+}
+</script>
+{% endblock %}

@@ -235,6 +235,17 @@
         });
     });
 
+    // Auto-fetch if params are present
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('kd_barang')) {
+        inputBarang.value = params.get('kd_barang');
+        if (params.has('kd_divisi')) {
+            inputDivisi.value = params.get('kd_divisi');
+        }
+        // Use setTimeout to ensure the DOM and all variables are fully ready
+        setTimeout(fetchHistori, 100);
+    }
+
     function fetchHistori() {
         const kdDivisi = inputDivisi.value.trim();
         const kdBarang = inputBarang.value.trim();

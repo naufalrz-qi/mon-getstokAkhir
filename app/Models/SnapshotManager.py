@@ -11,16 +11,24 @@ import os
 import sqlite3
 import threading
 import time
+import logging
 from datetime import datetime
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from decimal import Decimal
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('app.log')
+    ]
+)
 
 QUERIES_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'database', 'queries')
 PARALLEL_DIR = os.path.join(QUERIES_DIR, 'parallel')
 SNAPSHOTS_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'database', 'snapshots')
-
 
 def _load_sql(filename):
     path = os.path.join(PARALLEL_DIR, filename)
@@ -36,6 +44,7 @@ class SnapshotManager:
     _refresh_status = {}
     _mem_cache = {}
     _mem_cache_ts = {}
+    _cache_lock = threading.Lock()
 
     # ──────────── Paths ────────────
 
@@ -78,6 +87,42 @@ class SnapshotManager:
         conn.execute('CREATE INDEX IF NOT EXISTS idx_barang ON stok_snapshot(barang)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_kd_barang ON stok_snapshot(kd_barang)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_divisi ON stok_snapshot(divisi)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_stok_divisi_barang ON stok_snapshot(kd_divisi, kd_barang)')
+        
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS opname_snapshot (
+                no_transaksi    TEXT,
+                kd_divisi       TEXT,
+                divisi          TEXT,
+                kd_barang       TEXT,
+                barang          TEXT,
+                kd_satuan       TEXT,
+                satuan          TEXT,
+                tanggal         TEXT,
+                qty             REAL,
+                keterangan      TEXT,
+                petugas         TEXT,
+                status_text     TEXT,
+                tanggal_server  TEXT
+            )
+        ''')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_opname_barang ON opname_snapshot(barang)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_opname_kd_barang ON opname_snapshot(kd_barang)')
+
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS satuan_snapshot (
+                kd_barang       TEXT,
+                kd_satuan       TEXT,
+                jumlah          REAL,
+                nama_satuan     TEXT
+            )
+        ''')
+        try:
+            conn.execute('ALTER TABLE satuan_snapshot ADD COLUMN nama_satuan TEXT')
+        except sqlite3.OperationalError:
+            pass
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_satuan_kd_barang ON satuan_snapshot(kd_barang)')
+
         conn.commit()
         return conn
 
@@ -140,7 +185,7 @@ class SnapshotManager:
             if not row:
                 return cls.trigger_refresh(server_key, tanggal)
             last_refresh = row[0]
-        except:
+        except Exception:
             return cls.trigger_refresh(server_key, tanggal)
 
         if not tanggal:
@@ -169,7 +214,7 @@ class SnapshotManager:
     def _do_delta_refresh(cls, server_key, tanggal, last_refresh):
         """
         Background worker for delta refresh:
-        1. Fetch only NEW transactions since last_refresh (single query)
+        1. Fetch only NEW transactions since last_refresh (parallel)
         2. Apply debet/kredit changes to in-memory cache
         3. Update SQLite snapshot for affected items
         """
@@ -181,21 +226,140 @@ class SnapshotManager:
         try:
             status['state'] = 'fetching'
             status['progress'] = 10
-            status['message'] = 'Mengambil transaksi baru...'
+            status['message'] = 'Mengambil transaksi baru (parallel)...'
+            _t0 = time.time()
 
-            # Fetch delta from MSSQL
-            sql = _load_sql('09_delta.sql')
-            # Convert ISO timestamp to Python datetime for pyodbc
             last_refresh_dt = datetime.fromisoformat(last_refresh)
-            conn_mssql = db_manager.create_new_connection(server_key)
-            try:
-                cursor = conn_mssql.cursor()
-                cursor.execute(sql, [last_refresh_dt, tanggal])
-                columns = [desc[0] for desc in cursor.description]
-                delta_rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
-                cursor.close()
-            finally:
-                conn_mssql.close()
+
+            # Define delta queries — each runs in its own connection
+            delta_queries = {
+                'penjualan': """
+                    SET NOCOUNT ON;
+                    SELECT t.kd_divisi, d.kd_barang, 0 AS debet, d.qty AS kredit, d.kd_satuan, 'penjualan' AS source
+                    FROM t_penjualan_detail d (NOLOCK)
+                    INNER JOIN t_penjualan t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+                    WHERE t.tanggal_server > ?
+                      AND t.tanggal > dbo.GetTanggalTerakhirTutupBuku()
+                      AND CAST(t.tanggal AS DATE) <= CAST(? AS DATE)
+                """,
+                'pembelian': """
+                    SET NOCOUNT ON;
+                    SELECT t.kd_divisi, d.kd_barang, d.qty AS debet, 0 AS kredit, d.kd_satuan, 'pembelian' AS source
+                    FROM t_pembelian_detail d (NOLOCK)
+                    INNER JOIN t_pembelian t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+                    WHERE t.tanggal_server > ?
+                      AND t.tanggal > dbo.GetTanggalTerakhirTutupBuku()
+                      AND CAST(t.tanggal AS DATE) <= CAST(? AS DATE)
+                """,
+                'mutasi': """
+                    SET NOCOUNT ON;
+                    SELECT t.kd_divisi_asal AS kd_divisi, d.kd_barang, 0 AS debet, d.qty AS kredit, d.kd_satuan, 'mutasi_out' AS source
+                    FROM t_mutasi_stok_detail d (NOLOCK)
+                    INNER JOIN t_mutasi_stok t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+                    WHERE t.tanggal_server > ?
+                      AND t.tanggal > dbo.GetTanggalTerakhirTutupBuku()
+                      AND CAST(t.tanggal AS DATE) <= CAST(? AS DATE)
+                    UNION ALL
+                    SELECT t.kd_divisi_tujuan AS kd_divisi, d.kd_barang, d.qty AS debet, 0 AS kredit, d.kd_satuan, 'mutasi_in' AS source
+                    FROM t_mutasi_stok_detail d (NOLOCK)
+                    INNER JOIN t_mutasi_stok t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+                    WHERE t.tanggal_server > ?
+                      AND t.tanggal > dbo.GetTanggalTerakhirTutupBuku()
+                      AND CAST(t.tanggal AS DATE) <= CAST(? AS DATE)
+                """,
+                'retur_jual': """
+                    SET NOCOUNT ON;
+                    SELECT t.kd_divisi, d.kd_barang, d.qty AS debet, 0 AS kredit, d.kd_satuan, 'retur_jual' AS source
+                    FROM t_penjualan_retur_detail d (NOLOCK)
+                    INNER JOIN t_penjualan_retur t (NOLOCK) ON d.no_retur = t.no_retur
+                    WHERE t.tanggal_server > ?
+                      AND t.tanggal > dbo.GetTanggalTerakhirTutupBuku()
+                      AND CAST(t.tanggal AS DATE) <= CAST(? AS DATE)
+                """,
+                'retur_beli': """
+                    SET NOCOUNT ON;
+                    SELECT t.kd_divisi, d.kd_barang, 0 AS debet, d.qty AS kredit, d.kd_satuan, 'retur_beli' AS source
+                    FROM t_pembelian_retur_detail d (NOLOCK)
+                    INNER JOIN t_pembelian_retur t (NOLOCK) ON d.no_retur = t.no_retur
+                    WHERE t.tanggal_server > ?
+                      AND t.tanggal > dbo.GetTanggalTerakhirTutupBuku()
+                      AND CAST(t.tanggal AS DATE) <= CAST(? AS DATE)
+                """,
+                'opname': """
+                    SET NOCOUNT ON;
+                    SELECT kd_divisi, kd_barang, qty AS debet, 0 AS kredit, kd_satuan, 'opname_in' AS source
+                    FROM t_opname_stok (NOLOCK)
+                    WHERE status = 2
+                      AND tanggal_server > ?
+                      AND tanggal > dbo.GetTanggalTerakhirTutupBuku()
+                      AND CAST(tanggal AS DATE) <= CAST(? AS DATE)
+                    UNION ALL
+                    SELECT kd_divisi, kd_barang, 0 AS debet, qty AS kredit, kd_satuan, 'opname_out' AS source
+                    FROM t_opname_stok (NOLOCK)
+                    WHERE status <> 2
+                      AND tanggal_server > ?
+                      AND tanggal > dbo.GetTanggalTerakhirTutupBuku()
+                      AND CAST(tanggal AS DATE) <= CAST(? AS DATE)
+                """,
+            }
+
+            # Build params per query (mutasi and opname use UNION ALL so need 4 params)
+            base_params = [last_refresh_dt, tanggal]
+            query_params = {
+                'penjualan': base_params,
+                'pembelian': base_params,
+                'mutasi': base_params + base_params,  # 2x for UNION ALL
+                'retur_jual': base_params,
+                'retur_beli': base_params,
+                'opname': base_params + base_params,   # 2x for UNION ALL
+            }
+
+            # Parallel fetch
+            all_delta_rows = []
+            errors = []
+
+            def _fetch_delta(name, sql, params):
+                conn = None
+                try:
+                    conn = db_manager.create_new_connection(server_key)
+                    cursor = conn.cursor()
+                    cursor.execute(sql, params)
+                    cols = [d[0] for d in cursor.description]
+                    rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
+                    cursor.close()
+                    return name, rows
+                except Exception as e:
+                    err_msg = str(e)
+                    if 'Invalid object name' in err_msg:
+                        return name, []  # Table doesn't exist, skip silently
+                    return name, f'ERROR: {err_msg}'
+                finally:
+                    if conn:
+                        conn.close()
+
+            with ThreadPoolExecutor(max_workers=6) as executor:
+                futures = {}
+                for name, sql in delta_queries.items():
+                    f = executor.submit(_fetch_delta, name, sql, query_params[name])
+                    futures[f] = name
+
+                completed = 0
+                for future in as_completed(futures):
+                    if cancel and cancel.is_set():
+                        return
+                    name, result = future.result()
+                    if isinstance(result, str) and result.startswith('ERROR'):
+                        errors.append(f'{name}: {result}')
+                        print(f'[DELTA] {name} failed: {result}')
+                    else:
+                        all_delta_rows.extend(result)
+                    completed += 1
+                    status['progress'] = 10 + int((completed / len(delta_queries)) * 35)
+                    status['message'] = f'Fetched {completed}/{len(delta_queries)} tables...'
+
+            delta_rows = all_delta_rows
+            _t1 = time.time()
+            print(f'[DELTA TIMING] Parallel fetch: {_t1-_t0:.2f}s ({len(delta_rows)} rows)')
 
             if cancel and cancel.is_set():
                 return
@@ -241,19 +405,15 @@ class SnapshotManager:
                 status['message'] = f'Tidak ada perubahan baru ({elapsed}s)'
                 return
 
-            # Get satuan konversi for conversion
-            # Load from existing master cache or fetch fresh
+            # Get satuan konversi from LOCAL SQLite snapshot (no network needed)
             satuan_map = {}
+            db_path = cls._db_path(server_key)
             try:
-                sql_sat = "SET NOCOUNT ON; SELECT kd_barang, kd_satuan, jumlah FROM m_barang_satuan (NOLOCK)"
-                conn_sat = db_manager.create_new_connection(server_key)
-                cursor = conn_sat.cursor()
-                cursor.execute(sql_sat)
-                for row in cursor.fetchall():
+                conn_local = sqlite3.connect(db_path)
+                for row in conn_local.execute('SELECT kd_barang, kd_satuan, jumlah FROM satuan_snapshot').fetchall():
                     satuan_map[(row[0], row[1])] = float(row[2] or 1)
-                cursor.close()
-                conn_sat.close()
-            except:
+                conn_local.close()
+            except Exception:
                 pass
 
             # Accumulate delta per (kd_divisi, kd_barang)
@@ -267,34 +427,122 @@ class SnapshotManager:
                 kredit = float(row.get('kredit', 0) or 0) * conv
                 delta_accum[(kd_divisi, kd_barang)] += (debet - kredit)
 
-            status['progress'] = 70
+            _t2 = time.time()
+            print(f'[DELTA TIMING] Satuan + accumulate: {_t2-_t1:.2f}s ({len(delta_accum)} unique items)')
+            status['progress'] = 60
             status['message'] = f'Memperbarui {len(delta_accum)} item...'
 
-            # Apply delta to in-memory cache
-            if server_key not in cls._mem_cache:
-                cls._load_to_memory(server_key)
+            # ── Step 1: Quick lock to identify existing vs missing items ──
+            with cls._cache_lock:
+                if server_key not in cls._mem_cache:
+                    cls._load_to_memory(server_key)
+                cache = cls._mem_cache.get(server_key, [])
+                cache_index = {}
+                for i, row in enumerate(cache):
+                    key = (row.get('kd_divisi', ''), row.get('kd_barang', ''))
+                    cache_index[key] = i
 
-            cache = cls._mem_cache.get(server_key, [])
-
-            # Build lookup for fast update
-            cache_index = {}
-            for i, row in enumerate(cache):
-                key = (row.get('kd_divisi', ''), row.get('kd_barang', ''))
-                cache_index[key] = i
-
+            # Classify keys (no lock needed, just reading local vars)
             updated_keys = set()
-            for (kd_divisi, kd_barang), delta_stok in delta_accum.items():
-                key = (kd_divisi, kd_barang)
+            missing_keys = set()
+            for key in delta_accum:
                 if key in cache_index:
-                    idx = cache_index[key]
-                    cache[idx]['stok_akhir'] = round(cache[idx].get('stok_akhir', 0) + delta_stok, 4)
                     updated_keys.add(key)
-                # If item not in cache, it might be new — skip for delta (full refresh will catch it)
+                else:
+                    missing_keys.add(key)
 
-            cls._mem_cache[server_key] = cache
-            cls._mem_cache_ts[server_key] = time.time()
+            # ── Step 2: Fetch missing item info from MSSQL (OUTSIDE lock) ──
+            new_rows = []
+            new_items_data = {}
+            div_map = {}
+            if missing_keys:
+                status['progress'] = 65
+                status['message'] = f'Mengambil info {len(missing_keys)} item baru...'
+                missing_kd_barangs = list(set(k[1] for k in missing_keys))
+                
+                conn_mssql = None
+                try:
+                    conn_mssql = db_manager.create_new_connection(server_key)
+                    cursor = conn_mssql.cursor()
+                    cursor.execute("SELECT kd_divisi, nama FROM m_divisi (NOLOCK)")
+                    div_map = {row[0]: row[1] for row in cursor.fetchall()}
+                    
+                    chunk_size = 1000
+                    for i in range(0, len(missing_kd_barangs), chunk_size):
+                        chunk = missing_kd_barangs[i:i + chunk_size]
+                        placeholders = ','.join('?' for _ in chunk)
+                        sql_new_items = f"""
+                            SELECT 
+                                b.kd_barang, b.nama, b.kd_kategori, b.kd_merk, b.kd_model, b.kd_warna, b.ukuran,
+                                k.nama AS kategori, mk.nama AS merk, mo.nama AS model, w.nama AS warna,
+                                bs.harga_jual
+                            FROM m_barang b (NOLOCK)
+                            LEFT JOIN m_kategori k (NOLOCK) ON b.kd_kategori = k.kd_kategori
+                            LEFT JOIN m_merk mk (NOLOCK) ON b.kd_merk = mk.kd_merk
+                            LEFT JOIN m_model mo (NOLOCK) ON b.kd_model = mo.kd_model
+                            LEFT JOIN m_warna w (NOLOCK) ON b.kd_warna = w.kd_warna
+                            LEFT JOIN m_barang_satuan bs (NOLOCK) ON b.kd_barang = bs.kd_barang AND bs.jumlah = 1
+                            WHERE b.kd_barang IN ({placeholders})
+                        """
+                        cursor.execute(sql_new_items, chunk)
+                        cols = [d[0] for d in cursor.description]
+                        for row in cursor.fetchall():
+                            new_items_data[row[0]] = dict(zip(cols, row))
+                            
+                    cursor.close()
+                except Exception as e:
+                    import logging
+                    logging.error(f"[DELTA] Failed to fetch missing info: {e}")
+                finally:
+                    if conn_mssql:
+                        conn_mssql.close()
+
+                for (kd_divisi, kd_barang) in missing_keys:
+                    delta_stok = delta_accum[(kd_divisi, kd_barang)]
+                    master = new_items_data.get(kd_barang, {})
+                    if not master:
+                        continue
+                    new_rows.append({
+                        'kd_divisi': kd_divisi,
+                        'divisi': div_map.get(kd_divisi, kd_divisi),
+                        'kd_barang': kd_barang,
+                        'barang': master.get('nama', ''),
+                        'kategori': master.get('kategori', ''),
+                        'merk': master.get('merk', ''),
+                        'model': master.get('model', ''),
+                        'warna': master.get('warna', ''),
+                        'ukuran': master.get('ukuran', ''),
+                        'stok_akhir': round(delta_stok, 4),
+                        'harga_jual': float(master.get('harga_jual', 0) or 0),
+                        'harga_beli_akhir': 0.0,
+                        'harga_avg': 0.0,
+                    })
+
+            # ── Step 3: Brief lock to apply all changes to memory ──
+            _t3 = time.time()
+            print(f'[DELTA TIMING] Fetch missing items: {_t3-_t2:.2f}s ({len(missing_keys)} missing)')
+            status['progress'] = 75
+            status['message'] = 'Memperbarui cache...'
+            with cls._cache_lock:
+                cache = cls._mem_cache.get(server_key, [])
+                # Re-build index (cache may have been reloaded)
+                cache_index = {}
+                for i, row in enumerate(cache):
+                    key = (row.get('kd_divisi', ''), row.get('kd_barang', ''))
+                    cache_index[key] = i
+
+                for key in updated_keys:
+                    idx = cache_index.get(key)
+                    if idx is not None:
+                        cache[idx]['stok_akhir'] = round(cache[idx].get('stok_akhir', 0) + delta_accum[key], 4)
+
+                cache.extend(new_rows)
+                cls._mem_cache[server_key] = cache
+                cls._mem_cache_ts[server_key] = time.time()
 
             # Update SQLite
+            _t4 = time.time()
+            print(f'[DELTA TIMING] Memory update: {_t4-_t3:.2f}s')
             status['progress'] = 85
             status['message'] = 'Menyimpan perubahan ke snapshot...'
 
@@ -302,14 +550,33 @@ class SnapshotManager:
             conn_db = None
             try:
                 conn_db = cls._init_db(db_path)
+                batch_update = []
                 for (kd_divisi, kd_barang) in updated_keys:
                     idx = cache_index.get((kd_divisi, kd_barang))
                     if idx is not None:
                         new_stok = cache[idx]['stok_akhir']
-                        conn_db.execute(
-                            'UPDATE stok_snapshot SET stok_akhir = ? WHERE kd_divisi = ? AND kd_barang = ?',
-                            (new_stok, kd_divisi, kd_barang),
-                        )
+                        batch_update.append((new_stok, kd_divisi, kd_barang))
+                
+                if batch_update:
+                    conn_db.executemany(
+                        'UPDATE stok_snapshot SET stok_akhir = ? WHERE kd_divisi = ? AND kd_barang = ?',
+                        batch_update
+                    )
+                
+                if new_rows:
+                    batch_insert = []
+                    for row in new_rows:
+                        batch_insert.append((
+                            row['kd_divisi'], row['divisi'], row['kd_barang'],
+                            row['barang'], row['kategori'], row['merk'],
+                            row['model'], row['warna'], row['ukuran'],
+                            row['stok_akhir'], row['harga_jual'], row['harga_beli_akhir'],
+                            row['harga_avg'],
+                        ))
+                    conn_db.executemany(
+                        'INSERT INTO stok_snapshot VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                        batch_insert
+                    )
 
                 now_str = datetime.now().isoformat()
                 conn_db.execute("INSERT OR REPLACE INTO snapshot_meta VALUES ('last_refresh', ?)", (now_str,))
@@ -338,11 +605,14 @@ class SnapshotManager:
                     except:
                         pass
 
+            _t5 = time.time()
+            print(f'[DELTA TIMING] SQLite write: {_t5-_t4:.2f}s')
+            print(f'[DELTA TIMING] TOTAL: {_t5-_t0:.2f}s')
             elapsed = round(time.time() - status['started_at'], 1)
             status['state'] = 'ready'
             status['progress'] = 100
             status['row_count'] = len(delta_rows)
-            status['message'] = f'Quick update selesai! {len(delta_rows)} transaksi, {len(updated_keys)} item diupdate ({elapsed}s)'
+            status['message'] = f'Quick update selesai! {len(delta_rows)} transaksi, {len(updated_keys)} item diupdate, {len(new_rows)} item baru ditambahkan ({elapsed}s)'
 
         except Exception as e:
             status['state'] = 'error'
@@ -384,6 +654,7 @@ class SnapshotManager:
                 'retur':      ('07_retur.sql',       [tanggal]),
                 'harga_beli': ('08_harga_beli.sql',  None),
                 'harga_avg':  ('10_harga_avg.sql',   None),
+                'opname_detail': ('11_opname_detail.sql', None),
             }
 
             fetch_results = {}
@@ -463,7 +734,7 @@ class SnapshotManager:
             status['progress'] = 55
             status['message'] = 'Mengolah data...'
 
-            final_rows = cls._aggregate(fetch_results)
+            final_rows, opname_rows, satuan_rows = cls._aggregate(fetch_results)
 
             if cancel and cancel.is_set():
                 return
@@ -511,6 +782,34 @@ class SnapshotManager:
                 conn.executemany(
                     'INSERT INTO stok_snapshot VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
                     batch,
+                )
+
+                # Insert opname_snapshot
+                opname_batch = []
+                for row in opname_rows:
+                    opname_batch.append((
+                        row['no_transaksi'], row['kd_divisi'], row['divisi'],
+                        row['kd_barang'], row['barang'], row['kd_satuan'],
+                        row['satuan'], row['tanggal'], row['qty'],
+                        row['keterangan'], row['petugas'], row['status_text'],
+                        row['tanggal_server']
+                    ))
+                conn.execute('DELETE FROM opname_snapshot')
+                conn.executemany(
+                    'INSERT INTO opname_snapshot VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                    opname_batch
+                )
+
+                # Insert satuan_snapshot
+                satuan_batch = []
+                for row in satuan_rows:
+                    satuan_batch.append((
+                        row['kd_barang'], row['kd_satuan'], row['jumlah'], row.get('nama_satuan')
+                    ))
+                conn.execute('DELETE FROM satuan_snapshot')
+                conn.executemany(
+                    'INSERT INTO satuan_snapshot VALUES (?,?,?,?)',
+                    satuan_batch
                 )
 
                 now_str = datetime.now().isoformat()
@@ -649,7 +948,53 @@ class SnapshotManager:
 
         # Sort by divisi, barang name
         final_rows.sort(key=lambda r: (r['divisi'], r['barang']))
-        return final_rows
+
+        # ── Process opname detail ──
+        opname_rows = []
+        for row in fetch_results.get('opname_detail', []):
+            kd_barang = row.get('kd_barang', '')
+            kd_divisi = row.get('kd_divisi', '')
+            master = barang_map.get(kd_barang, {})
+            
+            # Map status
+            status_val = row.get('status')
+            status_text = 'Lain-Lain'
+            if status_val == 0:
+                status_text = 'Hilang'
+            elif status_val == 1:
+                status_text = 'Rusak'
+            elif status_val == 2 or str(status_val) == '2':
+                status_text = 'Lain-Lain(+)'
+            elif status_val == 3:
+                status_text = 'Lain-Lain (-)'
+
+            opname_rows.append({
+                'no_transaksi': row.get('no_transaksi', ''),
+                'kd_divisi': kd_divisi,
+                'divisi': divisi_map.get(kd_divisi, kd_divisi),
+                'kd_barang': kd_barang,
+                'barang': master.get('nama', '') or kd_barang,
+                'kd_satuan': row.get('kd_satuan', ''),
+                'satuan': row.get('satuan', ''),
+                'tanggal': row.get('tanggal', ''),
+                'qty': row.get('qty', 0),
+                'keterangan': row.get('keterangan', ''),
+                'petugas': row.get('petugas', ''),
+                'status_text': status_text,
+                'tanggal_server': row.get('tanggal_server', '')
+            })
+
+        # Process satuan_rows (from m_barang_satuan in master_sets[1])
+        satuan_rows = []
+        for s in satuan_list:
+            satuan_rows.append({
+                'kd_barang': s['kd_barang'],
+                'kd_satuan': s['kd_satuan'],
+                'jumlah': float(s.get('jumlah', 1) or 1),
+                'nama_satuan': s.get('nama_satuan') or s.get('kd_satuan')
+            })
+
+        return final_rows, opname_rows, satuan_rows
 
     # ──────────── Memory Cache ────────────
 
@@ -663,8 +1008,9 @@ class SnapshotManager:
             conn = sqlite3.connect(db_path)
             conn.row_factory = sqlite3.Row
             rows = conn.execute('SELECT * FROM stok_snapshot').fetchall()
-            cls._mem_cache[server_key] = [dict(r) for r in rows]
-            cls._mem_cache_ts[server_key] = time.time()
+            with cls._cache_lock:
+                cls._mem_cache[server_key] = [dict(r) for r in rows]
+                cls._mem_cache_ts[server_key] = time.time()
         except sqlite3.DatabaseError as e:
             if 'malformed' in str(e).lower() or 'corrupt' in str(e).lower():
                 print(f"[MEMORY CACHE] Corrupted DB detected for {server_key}. Removing...")
@@ -689,11 +1035,13 @@ class SnapshotManager:
     # ──────────── Search ────────────
 
     @classmethod
-    def search(cls, server_key, search_kode=None, search_nama=None, divisi=None):
+    def search(cls, server_key, search_kode=None, search_nama=None, divisi=None, limit=None, offset=None):
         # Try memory cache first
-        if server_key in cls._mem_cache:
+        with cls._cache_lock:
+            has_cache = server_key in cls._mem_cache
+        if has_cache:
             data = cls._filter_memory(server_key, search_kode, search_nama, divisi)
-            return cls._build_result(data, source='memory')
+            return cls._build_result(data, source='memory', limit=limit, offset=offset)
 
         # Try loading from SQLite
         db_path = cls._db_path(server_key)
@@ -701,7 +1049,7 @@ class SnapshotManager:
             cls._load_to_memory(server_key)
             if server_key in cls._mem_cache:
                 data = cls._filter_memory(server_key, search_kode, search_nama, divisi)
-                return cls._build_result(data, source='sqlite')
+                return cls._build_result(data, source='sqlite', limit=limit, offset=offset)
 
         return {
             'status': 'no_snapshot',
@@ -709,6 +1057,102 @@ class SnapshotManager:
             'summary': {'total_items': 0, 'divisi_count': 0, 'total_nominal': 0, 'avg_stok': 0},
             'message': 'Belum ada snapshot. Klik Refresh untuk memuat data.',
         }
+
+    @classmethod
+    def search_opname(cls, server_key, search_kode=None, search_nama=None, divisi=None):
+        db_path = cls._db_path(server_key)
+        if not os.path.exists(db_path):
+            return {
+                'status': 'no_snapshot',
+                'data': [],
+                'message': 'Belum ada snapshot. Klik Refresh untuk memuat data.',
+            }
+            
+        try:
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            
+            # Fetch opname data
+            query = "SELECT * FROM opname_snapshot WHERE 1=1"
+            params = []
+            
+            if search_kode:
+                query += " AND kd_barang LIKE ?"
+                params.append(f"%{search_kode}%")
+                
+            if search_nama:
+                query += " AND barang LIKE ?"
+                params.append(f"%{search_nama}%")
+                
+            if divisi:
+                query += " AND divisi = ?"
+                params.append(divisi)
+                
+            query += " ORDER BY tanggal DESC"
+            
+            opname_rows = conn.execute(query, params).fetchall()
+            
+            # Fetch all satuan data for the items in the result
+            kd_barangs = list(set(r['kd_barang'] for r in opname_rows))
+            satuan_dict = defaultdict(list)
+            
+            if kd_barangs:
+                placeholders = ','.join('?' for _ in kd_barangs)
+                try:
+                    sat_query = f"SELECT kd_barang, kd_satuan, jumlah, nama_satuan FROM satuan_snapshot WHERE kd_barang IN ({placeholders})"
+                    sat_rows = conn.execute(sat_query, kd_barangs).fetchall()
+                    for sr in sat_rows:
+                        satuan_dict[sr['kd_barang']].append({
+                            'kd_satuan': sr['kd_satuan'],
+                            'jumlah': sr['jumlah'],
+                            'nama_satuan': sr['nama_satuan']
+                        })
+                except sqlite3.OperationalError:
+                    # Fallback for old snapshots without nama_satuan column
+                    sat_query = f"SELECT kd_barang, kd_satuan, jumlah FROM satuan_snapshot WHERE kd_barang IN ({placeholders})"
+                    sat_rows = conn.execute(sat_query, kd_barangs).fetchall()
+                    for sr in sat_rows:
+                        satuan_dict[sr['kd_barang']].append({
+                            'kd_satuan': sr['kd_satuan'],
+                            'jumlah': sr['jumlah'],
+                            'nama_satuan': sr['kd_satuan']
+                        })
+
+            conn.close()
+
+            data = []
+            for r in opname_rows:
+                row_dict = dict(r)
+                row_dict['satuans'] = satuan_dict.get(r['kd_barang'], [])
+                data.append(row_dict)
+
+            return {
+                'status': 'success',
+                'data': data,
+                'row_count': len(data),
+                'source': 'sqlite'
+            }
+
+        except sqlite3.OperationalError as e:
+            if 'no such table' in str(e).lower():
+                return {
+                    'status': 'no_snapshot',
+                    'data': [],
+                    'message': 'Data opname belum tersedia. Silakan lakukan Full Refresh di Dashboard terlebih dahulu.'
+                }
+            import traceback
+            traceback.print_exc()
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
 
     @classmethod
     def _like_match(cls, value, pattern):
@@ -752,7 +1196,29 @@ class SnapshotManager:
         return filtered
 
     @classmethod
-    def _build_result(cls, data, source='memory'):
+    def _build_result(cls, data, source='memory', limit=None, offset=None):
+        total_items = len(data)
+        total_nominal = 0
+        total_stok = 0
+        divisi_set = set()
+
+        for r in data:
+            stok = r.get('stok_akhir', 0)
+            h_avg = r.get('harga_avg', 0)
+            h_beli = r.get('harga_beli_akhir', 0)
+            nominal = round(stok * h_avg, 2) if h_avg else round(stok * h_beli, 2)
+            
+            total_nominal += nominal
+            total_stok += stok
+            divisi = r.get('divisi')
+            if divisi:
+                divisi_set.add(divisi)
+
+        if offset is not None:
+            data = data[offset:]
+        if limit is not None:
+            data = data[:limit]
+
         mapped = []
         for r in data:
             stok = r.get('stok_akhir', 0)
@@ -776,23 +1242,42 @@ class SnapshotManager:
                 'Harga Beli Akhir': h_beli,
             })
 
-        total_nominal = sum(r.get('Nominal', 0) for r in mapped)
-        total_stok = sum(r.get('Stok Akhir', 0) for r in mapped)
-        divisi_set = set(r.get('Divisi') for r in mapped)
-
         return {
             'status': 'success',
             'data': mapped,
             'summary': {
-                'total_items': len(mapped),
+                'total_items': total_items,
                 'total_nominal': round(total_nominal, 2),
                 'divisi_count': len(divisi_set),
-                'avg_stok': round(total_stok / len(mapped), 2) if mapped else 0,
+                'avg_stok': round(total_stok / total_items, 2) if total_items else 0,
                 'divisi_list': sorted(list(divisi_set)),
             },
             'row_count': len(mapped),
             'source': source,
+            'limit': limit,
+            'offset': offset
         }
+
+    @classmethod
+    def get_divisi_list(cls, server_key):
+        """Return distinct divisi names — lightweight, no full data load."""
+        # Try memory cache first
+        with cls._cache_lock:
+            if server_key in cls._mem_cache:
+                divisi_set = set(r.get('divisi', '') for r in cls._mem_cache[server_key] if r.get('divisi'))
+                return sorted(divisi_set)
+
+        # Fallback to SQLite
+        db_path = cls._db_path(server_key)
+        if os.path.exists(db_path):
+            try:
+                conn = sqlite3.connect(db_path)
+                rows = conn.execute('SELECT DISTINCT divisi FROM stok_snapshot WHERE divisi IS NOT NULL ORDER BY divisi').fetchall()
+                conn.close()
+                return [r[0] for r in rows]
+            except Exception:
+                pass
+        return []
 
     # ──────────── Status ────────────
 
@@ -810,7 +1295,7 @@ class SnapshotManager:
                 for key, value in conn.execute('SELECT key, value FROM snapshot_meta').fetchall():
                     snapshot_info[key] = value
                 conn.close()
-            except:
+            except Exception:
                 pass
 
         if status and status['state'] in ('starting', 'fetching', 'writing'):
@@ -842,200 +1327,54 @@ class SnapshotManager:
     @classmethod
     def get_barang_histori(cls, server_key, kd_barang, kd_divisi, start_date=None, end_date=None):
         """
-        Fetch direct transaction history for ONE item in ONE division from MSSQL.
-        This queries all tables in parallel to bypass slow views (mimicking mon_g_barang_histori).
+        Fetch transaction history for ONE item (optional division) from MSSQL.
+        Uses the CTE-based 11_barang_histori.sql for a single efficient query.
         """
         from app.Models.Database import db_manager
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        
+
         try:
-            queries = {
-                'stok_awal': '''
-                    SELECT bd.kd_divisi, dbo.GetTanggalTerakhirTutupBuku() AS tanggal, '0' AS no_transaksi, 
-                           'Stok Awal' AS Transaksi, bd.stok_awal AS Debet, 0.0 AS Kredit, 
-                           bs.kd_satuan, bd.harga_beli_awal as harga
-                    FROM m_barang_divisi bd (NOLOCK)
-                    INNER JOIN m_barang_satuan bs (NOLOCK) ON bd.kd_barang = bs.kd_barang
-                    INNER JOIN m_barang b (NOLOCK) ON bd.kd_barang = b.kd_barang
-                    INNER JOIN m_kategori k (NOLOCK) ON b.kd_kategori = k.kd_kategori
-                    WHERE bs.jumlah = 1 AND k.status <> 2 AND bd.kd_barang = ?
-                      AND (? = '' OR bd.kd_divisi = ?)
-                ''',
-                'mutasi_keluar': '''
-                    SELECT t.kd_divisi_asal AS kd_divisi, t.tanggal, d.no_transaksi, 
-                           'Mutasi Keluar' AS Transaksi, 0.0 AS Debet, d.qty AS Kredit, 
-                           d.kd_satuan, 0.0 AS harga
-                    FROM t_mutasi_stok_detail d (NOLOCK)
-                    INNER JOIN t_mutasi_stok t (NOLOCK) ON d.no_transaksi = t.no_transaksi
-                    WHERE t.tanggal > dbo.GetTanggalTerakhirTutupBuku() AND d.kd_barang = ?
-                      AND (? = '' OR t.kd_divisi_asal = ?)
-                ''',
-                'mutasi_masuk': '''
-                    SELECT t.kd_divisi_tujuan AS kd_divisi, t.tanggal, d.no_transaksi, 
-                           'Mutasi Masuk' AS Transaksi, d.qty AS Debet, 0.0 AS Kredit, 
-                           d.kd_satuan, 0.0 AS harga
-                    FROM t_mutasi_stok_detail d (NOLOCK)
-                    INNER JOIN t_mutasi_stok t (NOLOCK) ON d.no_transaksi = t.no_transaksi
-                    WHERE t.tanggal > dbo.GetTanggalTerakhirTutupBuku() AND d.kd_barang = ?
-                      AND (? = '' OR t.kd_divisi_tujuan = ?)
-                ''',
-                'opname_masuk': '''
-                    SELECT kd_divisi, tanggal, no_transaksi, 'Opname Masuk' AS Transaksi, 
-                           QTY AS Debet, 0.0 AS Kredit, kd_satuan, 0.0 AS harga
-                    FROM t_opname_stok (NOLOCK)
-                    WHERE status = 2 AND tanggal > dbo.GetTanggalTerakhirTutupBuku() AND kd_barang = ?
-                      AND (? = '' OR kd_divisi = ?)
-                ''',
-                'opname_keluar': '''
-                    SELECT kd_divisi, tanggal, no_transaksi, 'Opname Keluar' AS Transaksi, 
-                           0.0 AS Debet, qty AS Kredit, kd_satuan, 0.0 AS harga
-                    FROM t_opname_stok (NOLOCK)
-                    WHERE status <> 2 AND tanggal > dbo.GetTanggalTerakhirTutupBuku() AND kd_barang = ?
-                      AND (? = '' OR kd_divisi = ?)
-                ''',
-                'pembelian': '''
-                    SELECT t.kd_divisi, t.tanggal, d.no_transaksi, 'Pembelian' AS Transaksi, 
-                           d.qty AS Debet, 0.0 AS Kredit, d.kd_satuan, d.harga_beli AS harga
-                    FROM t_pembelian_detail d (NOLOCK)
-                    INNER JOIN t_pembelian t (NOLOCK) ON d.no_transaksi = t.no_transaksi
-                    WHERE t.tanggal > dbo.GetTanggalTerakhirTutupBuku() AND t.status IN (0, 1) AND d.kd_barang = ?
-                      AND (? = '' OR t.kd_divisi = ?)
-                ''',
-                'retur_pembelian': '''
-                    SELECT t.kd_divisi, t.tanggal, d.no_retur AS no_transaksi, 'Retur Pembelian' AS Transaksi, 
-                           0.0 AS Debet, d.qty AS Kredit, d.kd_satuan, d.harga AS harga
-                    FROM t_pembelian_retur_detail d (NOLOCK)
-                    INNER JOIN t_pembelian_retur t (NOLOCK) ON d.no_retur = t.no_retur
-                    WHERE t.tanggal > dbo.GetTanggalTerakhirTutupBuku() AND d.kd_barang = ?
-                      AND (? = '' OR t.kd_divisi = ?)
-                ''',
-                'penjualan': '''
-                    SELECT t.kd_divisi, t.tanggal, d.no_transaksi, 'Penjualan' AS Transaksi, 
-                           0.0 AS Debet, d.qty AS Kredit, d.kd_satuan, d.harga_jual AS harga
-                    FROM t_penjualan_detail d (NOLOCK)
-                    INNER JOIN t_penjualan t (NOLOCK) ON d.no_transaksi = t.no_transaksi
-                    INNER JOIN m_barang b (NOLOCK) ON d.kd_barang = b.kd_barang
-                    INNER JOIN m_kategori k (NOLOCK) ON b.kd_kategori = k.kd_kategori
-                    WHERE t.tanggal > dbo.GetTanggalTerakhirTutupBuku() AND k.status <> 2 AND d.kd_barang = ?
-                      AND (? = '' OR t.kd_divisi = ?)
-                ''',
-                'retur_penjualan': '''
-                    SELECT t.kd_divisi, t.tanggal, d.no_retur AS no_transaksi, 'Retur Penjualan Dengan Nota' AS Transaksi, 
-                           d.qty AS Debet, 0.0 AS Kredit, d.kd_satuan, d.harga_jual AS harga
-                    FROM t_penjualan_retur_detail d (NOLOCK)
-                    INNER JOIN t_penjualan_retur t (NOLOCK) ON d.no_retur = t.no_retur
-                    WHERE t.tanggal > dbo.GetTanggalTerakhirTutupBuku() AND d.kd_barang = ?
-                      AND (? = '' OR t.kd_divisi = ?)
-                ''',
-                'master_barang': 'SELECT nama, kd_barang FROM m_barang (NOLOCK) WHERE kd_barang = ?',
-                'master_divisi': 'SELECT kd_divisi, keterangan, kepala_nota FROM m_divisi (NOLOCK)',
-                'master_satuan': 'SELECT kd_satuan, nama FROM m_satuan (NOLOCK)',
-                'satuan_konversi': 'SELECT kd_satuan, jumlah FROM m_barang_satuan (NOLOCK) WHERE kd_barang = ?'
-            }
+            sql = _load_sql('11_barang_histori.sql')
+            conn = db_manager.create_new_connection(server_key)
+            try:
+                cursor = conn.cursor()
+                cursor.execute(sql, [kd_barang, kd_divisi or ''])
+                columns = [desc[0] for desc in cursor.description]
+                rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+                cursor.close()
+            finally:
+                conn.close()
 
-            def _fetch_component(name, sql):
-                conn = None
-                try:
-                    conn = db_manager.create_new_connection(server_key)
-                    cursor = conn.cursor()
-                    if name in ['master_divisi', 'master_satuan']:
-                        cursor.execute(sql)
-                    elif name in ['master_barang', 'satuan_konversi']:
-                        cursor.execute(sql, [kd_barang])
-                    else:
-                        cursor.execute(sql, [kd_barang, kd_divisi or '', kd_divisi or ''])
-                    
-                    columns = [desc[0] for desc in cursor.description]
-                    rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
-                    cursor.close()
-                    return name, rows
-                except Exception as e:
-                    return name, f"ERROR: {str(e)}"
-                finally:
-                    if conn:
-                        try:
-                            conn.close()
-                        except:
-                            pass
-
-            results = {}
-            with ThreadPoolExecutor(max_workers=6) as executor:
-                futures = {executor.submit(_fetch_component, name, sql): name for name, sql in queries.items()}
-                for future in as_completed(futures):
-                    name = futures[future]
-                    res = future.result()
-                    if isinstance(res[1], str) and res[1].startswith('ERROR'):
-                        results[name] = []
-                    else:
-                        results[name] = res[1]
-
-            # Collect Master Data
-            barang_nama = results['master_barang'][0]['nama'] if results.get('master_barang') else ''
-            
-            divisi_map = {}
-            for d in results.get('master_divisi', []):
-                divisi_map[d['kd_divisi']] = {
-                    'keterangan': d.get('keterangan', ''),
-                    'kepala_nota': d.get('kepala_nota', '')
-                }
-                
-            satuan_map = {}
-            for s in results.get('master_satuan', []):
-                satuan_map[s['kd_satuan']] = s.get('nama', '')
-                
-            konversi_map = {}
-            for k in results.get('satuan_konversi', []):
-                konversi_map[k['kd_satuan']] = float(k.get('jumlah') or 1.0)
-
-            # Combine transaction tables
-            all_transactions = []
-            transaction_keys = [
-                'stok_awal', 'mutasi_keluar', 'mutasi_masuk', 'opname_masuk', 
-                'opname_keluar', 'pembelian', 'retur_pembelian', 'penjualan', 'retur_penjualan'
-            ]
-            for key in transaction_keys:
-                all_transactions.extend(results.get(key, []))
-
-            # Assemble Final Output
+            # Format output
             final_data = []
-            for row in all_transactions:
-                kd_div = row.get('kd_divisi') or ''
-                div_info = divisi_map.get(kd_div, {})
-                sat_nama = satuan_map.get(row.get('kd_satuan'), '')
-                konversi = konversi_map.get(row.get('kd_satuan'), 1.0)
-
+            for row in rows:
                 tgl = row.get('tanggal')
                 if isinstance(tgl, datetime):
                     tgl = tgl.strftime('%Y-%m-%d %H:%M:%S')
 
-                debet = float(row.get('Debet') or 0)
-                kredit = float(row.get('Kredit') or 0)
-                harga = float(row.get('harga') or 0)
-
                 final_data.append({
-                    'Kd_Divisi': kd_div,
-                    'Divisi': div_info.get('keterangan', ''),
-                    'K.Nota': div_info.get('kepala_nota', ''),
+                    'Kd_Divisi': row.get('Kd_Divisi', ''),
+                    'Divisi': row.get('Divisi', ''),
+                    'K.Nota': row.get('K.Nota', ''),
                     'tanggal': tgl,
                     'Transaksi': row.get('Transaksi', ''),
                     'no_transaksi': row.get('no_transaksi', ''),
-                    'kd_barang': kd_barang,
-                    'barang': barang_nama,
-                    'Debet': debet,
-                    'Kredit': kredit,
+                    'kd_barang': row.get('kd_barang', ''),
+                    'barang': row.get('barang', ''),
+                    'Debet': float(row.get('Debet') or 0),
+                    'Kredit': float(row.get('Kredit') or 0),
                     'kd_satuan': row.get('kd_satuan', ''),
-                    'satuan': sat_nama,
-                    'harga': harga,
-                    'Konversi': konversi
+                    'satuan': row.get('satuan', ''),
+                    'harga': float(row.get('harga') or 0),
+                    'Konversi': float(row.get('Konversi') or 1),
                 })
 
+            # Date filtering (in Python since SQL already filters by tutup buku)
             if start_date or end_date:
                 filtered_data = []
                 for r in final_data:
                     tgl_str = r['tanggal']
                     if not tgl_str:
                         continue
-                    # Lexical comparison on YYYY-MM-DD
                     if start_date and tgl_str[:10] < start_date:
                         continue
                     if end_date and tgl_str[:10] > end_date:
@@ -1043,16 +1382,100 @@ class SnapshotManager:
                     filtered_data.append(r)
                 final_data = filtered_data
 
-            # Sort mimicking: ORDER BY dbo.m_divisi.kd_divisi, dbo.v_g_barang_histori_detail.tanggal
-            final_data.sort(key=lambda x: (x['Kd_Divisi'], x['tanggal'] or ''))
-
             return {
                 'status': 'success',
                 'data': final_data,
                 'row_count': len(final_data)
             }
-            
+
         except Exception as e:
             import traceback
             traceback.print_exc()
             return {'status': 'error', 'message': str(e)}
+
+    @classmethod
+    def get_item_stock_detail(cls, server_key, kd_barang):
+        """
+        Get stock detail for ONE item across all divisions + satuan conversions.
+        Used by the Opname detail panel to show stock breakdown per divisi per satuan.
+        """
+        # Try memory cache first for stock data
+        with cls._cache_lock:
+            has_cache = server_key in cls._mem_cache
+        
+        stok_rows = []
+        if has_cache:
+            cache = cls._mem_cache.get(server_key, [])
+            stok_rows = [r for r in cache if r.get('kd_barang') == kd_barang]
+        else:
+            # Fallback to SQLite
+            db_path = cls._db_path(server_key)
+            if not os.path.exists(db_path):
+                return {'status': 'no_snapshot', 'data': [], 'message': 'Belum ada snapshot.'}
+            try:
+                conn = sqlite3.connect(db_path)
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    'SELECT * FROM stok_snapshot WHERE kd_barang = ?', (kd_barang,)
+                ).fetchall()
+                stok_rows = [dict(r) for r in rows]
+                conn.close()
+            except Exception as e:
+                return {'status': 'error', 'message': str(e)}
+
+        # Get satuan conversions from SQLite
+        satuans = []
+        db_path = cls._db_path(server_key)
+        if os.path.exists(db_path):
+            try:
+                conn = sqlite3.connect(db_path)
+                conn.row_factory = sqlite3.Row
+                try:
+                    sat_rows = conn.execute(
+                        'SELECT kd_satuan, jumlah, nama_satuan FROM satuan_snapshot WHERE kd_barang = ?', (kd_barang,)
+                    ).fetchall()
+                    satuans = [dict(r) for r in sat_rows]
+                except sqlite3.OperationalError:
+                    # Fallback for old snapshots without nama_satuan column
+                    sat_rows = conn.execute(
+                        'SELECT kd_satuan, jumlah FROM satuan_snapshot WHERE kd_barang = ?', (kd_barang,)
+                    ).fetchall()
+                    satuans = [{'kd_satuan': r['kd_satuan'], 'jumlah': r['jumlah'], 'nama_satuan': r['kd_satuan']} for r in sat_rows]
+                conn.close()
+            except Exception:
+                pass
+
+        # Build per-divisi breakdown
+        divisi_list = []
+        for r in stok_rows:
+            divisi_list.append({
+                'kd_divisi': r.get('kd_divisi', ''),
+                'divisi': r.get('divisi', ''),
+                'stok_akhir': r.get('stok_akhir', 0),
+                'harga_jual': r.get('harga_jual', 0),
+                'harga_beli_akhir': r.get('harga_beli_akhir', 0),
+                'harga_avg': r.get('harga_avg', 0),
+            })
+
+        # Item info from first row
+        info = {}
+        if stok_rows:
+            first = stok_rows[0]
+            info = {
+                'kd_barang': first.get('kd_barang', ''),
+                'barang': first.get('barang', ''),
+                'kategori': first.get('kategori', ''),
+                'merk': first.get('merk', ''),
+                'model': first.get('model', ''),
+                'warna': first.get('warna', ''),
+                'ukuran': first.get('ukuran', ''),
+                'total_stok': sum(r.get('stok_akhir', 0) for r in stok_rows),
+            }
+
+        return {
+            'status': 'success',
+            'info': info,
+            'divisi_list': divisi_list,
+            'satuans': satuans,
+        }
+

@@ -93,14 +93,30 @@ class AuthController:
         return redirect('/auth/login')
 
     @staticmethod
-    def admin_required(f):
-        """Decorator untuk proteksi rute dasar (Bisa diakses super_admin dan admin)"""
+    def login_required(f):
+        """Decorator untuk proteksi rute yang butuh login saja (semua role)"""
         @wraps(f)
         def decorated_function(*args, **kwargs):
             if not session.get('username'):
                 if request.is_json or request.path.startswith('/stok/api/') or request.path.startswith('/stok/snapshot/'):
                     return jsonify({'status': 'error', 'message': 'Authentication required. Mohon login.'}), 401
                 return redirect('/auth/login')
+            return f(*args, **kwargs)
+        return decorated_function
+
+    @staticmethod
+    def admin_required(f):
+        """Decorator untuk proteksi rute admin (Bisa diakses super_admin dan admin)"""
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not session.get('username'):
+                if request.is_json or request.path.startswith('/stok/api/') or request.path.startswith('/stok/snapshot/'):
+                    return jsonify({'status': 'error', 'message': 'Authentication required. Mohon login.'}), 401
+                return redirect('/auth/login')
+            if session.get('role') not in ('admin', 'super_admin'):
+                if request.is_json or request.path.startswith('/stok/api/') or request.path.startswith('/stok/snapshot/'):
+                    return jsonify({'status': 'error', 'message': 'Akses Ditolak. Membutuhkan izin Admin.'}), 403
+                return redirect('/stok/')
             return f(*args, **kwargs)
         return decorated_function
 

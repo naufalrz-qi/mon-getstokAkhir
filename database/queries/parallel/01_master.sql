@@ -14,8 +14,9 @@ INNER JOIN m_barang_satuan bs (NOLOCK) ON b.kd_barang = bs.kd_barang
 WHERE bs.jumlah = 1 AND bs.status <> 0 AND k.status <> 2;
 
 -- Satuan konversi (semua satuan per barang)
-SELECT kd_barang, kd_satuan, jumlah
-FROM m_barang_satuan (NOLOCK);
+SELECT bs.kd_barang, bs.kd_satuan, bs.jumlah, s.nama AS nama_satuan
+FROM m_barang_satuan bs (NOLOCK)
+LEFT JOIN m_satuan s (NOLOCK) ON bs.kd_satuan = s.kd_satuan;
 
 -- Divisi
 SELECT kd_divisi, nama FROM m_divisi (NOLOCK);

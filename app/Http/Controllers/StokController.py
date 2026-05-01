@@ -41,6 +41,15 @@ class StokController:
         return render_template('histori.html')
 
     @staticmethod
+    def opname_page():
+        """HTML Page: Opname Stok (Read-Only)"""
+        server_key = session.get('selected_server')
+        tanggal = request.args.get('tanggal', datetime.now().strftime('%Y-%m-%d'))
+        if not server_key:
+            return render_template('index.html')
+        return render_template('opname.html', tanggal=tanggal)
+
+    @staticmethod
     def mass_refresh_page():
         """HTML Page: Mass refresh semua server"""
         return render_template('mass_refresh.html')
@@ -196,6 +205,20 @@ class StokController:
     # ──────────── Data APIs ────────────
 
     @staticmethod
+    def fetch_divisi_list():
+        """API: Get distinct divisi names (lightweight — no full data load)"""
+        try:
+            server_key = session.get('selected_server')
+            if not server_key:
+                return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
+
+            divisi_list = SnapshotManager.get_divisi_list(server_key)
+            return jsonify({'status': 'success', 'divisi_list': divisi_list})
+
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
     def fetch_monitoring_data():
         """API: Search stok data from local snapshot (instant)"""
         try:
@@ -206,8 +229,44 @@ class StokController:
             search_kode = request.args.get('search_kode')
             search_nama = request.args.get('search_nama')
             divisi = request.args.get('divisi')
+            
+            # Pagination params
+            limit = request.args.get('limit', type=int)
+            offset = request.args.get('offset', type=int)
 
-            result = SnapshotManager.search(server_key, search_kode, search_nama, divisi)
+            result = SnapshotManager.search(server_key, search_kode, search_nama, divisi, limit, offset)
+            return jsonify(result)
+
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def fetch_opname_data():
+        """API: Search opname data from local snapshot"""
+        try:
+            server_key = session.get('selected_server')
+            if not server_key:
+                return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
+
+            search_kode = request.args.get('search_kode')
+            search_nama = request.args.get('search_nama')
+            divisi = request.args.get('divisi')
+
+            result = SnapshotManager.search_opname(server_key, search_kode, search_nama, divisi)
+            return jsonify(result)
+
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def fetch_item_stock_detail(kd_barang):
+        """API: Get stock breakdown per divisi + satuan for one item"""
+        try:
+            server_key = session.get('selected_server')
+            if not server_key:
+                return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
+
+            result = SnapshotManager.get_item_stock_detail(server_key, kd_barang)
             return jsonify(result)
 
         except Exception as e:

@@ -193,9 +193,11 @@ SELECT
     h.Kredit,
     h.kd_satuan,
     m_satuan.nama AS [satuan],
-    h.harga
+    h.harga,
+    ISNULL(mbs.jumlah, 1) AS [Konversi]
 FROM cte_histori h
 INNER JOIN m_divisi (NOLOCK) ON h.kd_divisi = m_divisi.kd_divisi
 INNER JOIN m_barang (NOLOCK) ON h.kd_barang = m_barang.kd_barang
 LEFT JOIN m_satuan (NOLOCK) ON h.kd_satuan = m_satuan.kd_satuan
+LEFT JOIN m_barang_satuan mbs (NOLOCK) ON h.kd_barang = mbs.kd_barang AND h.kd_satuan = mbs.kd_satuan
 ORDER BY h.tanggal ASC;

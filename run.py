@@ -59,7 +59,8 @@ def main():
             host=host,
             port=port,
             debug=debug,
-            use_reloader=debug
+            use_reloader=debug,
+            threaded=True
         )
     except KeyboardInterrupt:
         print("\n\nShutting down...")

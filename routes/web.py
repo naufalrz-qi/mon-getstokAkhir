@@ -45,6 +45,7 @@ def register_routes(app):
     Route.get('/stok/index', StokController.index_page)
     Route.get('/stok/', StokController.monitoring_page)
     Route.get('/stok/histori', StokController.histori_page)
+    Route.get('/stok/opname', StokController.opname_page)
     Route.get('/stok/servers', AuthController.super_admin_required(ServerController.servers_page))
     Route.get('/stok/mass-refresh', AuthController.admin_required(StokController.mass_refresh_page))
 
@@ -55,8 +56,8 @@ def register_routes(app):
     Route.post('/auth/login', AuthController.login)
     Route.get('/auth/logout', AuthController.logout)
     
-    Route.get('/auth/change-password', AuthController.admin_required(AuthController.change_password_page))
-    Route.post('/auth/change-password', AuthController.admin_required(AuthController.change_password))
+    Route.get('/auth/change-password', AuthController.login_required(AuthController.change_password_page))
+    Route.post('/auth/change-password', AuthController.login_required(AuthController.change_password))
     
     Route.get('/auth/users', AuthController.super_admin_required(AuthController.users_page))
     Route.get('/api/users', AuthController.super_admin_required(AuthController.api_get_users))
@@ -87,6 +88,9 @@ def register_routes(app):
     # API Routes : Stok Data (reads from local snapshot)
     # ==========================================================
     Route.get('/stok/monitoring', StokController.fetch_monitoring_data)
+    Route.get('/stok/api/divisi-list', StokController.fetch_divisi_list)
+    Route.get('/stok/api/opname', StokController.fetch_opname_data)
+    Route.get('/stok/api/item-stock/<kd_barang>', StokController.fetch_item_stock_detail)
     Route.get('/stok/barang-histori', StokController.fetch_barang_histori)
     Route.get('/stok/export/histori', StokController.export_histori_xlsx)
     Route.get('/stok/export/xlsx', StokController.export_xlsx)
