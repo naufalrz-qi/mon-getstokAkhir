@@ -55,6 +55,9 @@ def main():
     """)
     
     try:
+        from app.Models.SnapshotManager import SnapshotManager
+        SnapshotManager.start_auto_update(interval=300)
+        
         app.run(
             host=host,
             port=port,

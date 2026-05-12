@@ -44,7 +44,9 @@ class SnapshotManager:
     _refresh_status = {}
     _mem_cache = {}
     _mem_cache_ts = {}
-    _cache_lock = threading.Lock()
+    _cache_lock = threading.RLock()
+    _auto_update_thread = None
+    _auto_update_stop_event = None
 
     # ──────────── Paths ────────────
 
@@ -211,7 +213,7 @@ class SnapshotManager:
         return {'status': 'started', 'message': 'Quick update dimulai'}
 
     @classmethod
-    def _do_delta_refresh(cls, server_key, tanggal, last_refresh):
+    def _do_delta_refresh(cls, server_key, tanggal, last_refresh, is_sequential=False):
         """
         Background worker for delta refresh:
         1. Fetch only NEW transactions since last_refresh (parallel)
@@ -337,17 +339,13 @@ class SnapshotManager:
                     if conn:
                         conn.close()
 
-            with ThreadPoolExecutor(max_workers=6) as executor:
-                futures = {}
-                for name, sql in delta_queries.items():
-                    f = executor.submit(_fetch_delta, name, sql, query_params[name])
-                    futures[f] = name
-
+            if is_sequential:
+                status['message'] = 'Mengambil transaksi baru (sequential)...'
                 completed = 0
-                for future in as_completed(futures):
+                for name, sql in delta_queries.items():
                     if cancel and cancel.is_set():
                         return
-                    name, result = future.result()
+                    name, result = _fetch_delta(name, sql, query_params[name])
                     if isinstance(result, str) and result.startswith('ERROR'):
                         errors.append(f'{name}: {result}')
                         print(f'[DELTA] {name} failed: {result}')
@@ -356,6 +354,26 @@ class SnapshotManager:
                     completed += 1
                     status['progress'] = 10 + int((completed / len(delta_queries)) * 35)
                     status['message'] = f'Fetched {completed}/{len(delta_queries)} tables...'
+            else:
+                with ThreadPoolExecutor(max_workers=6) as executor:
+                    futures = {}
+                    for name, sql in delta_queries.items():
+                        f = executor.submit(_fetch_delta, name, sql, query_params[name])
+                        futures[f] = name
+
+                    completed = 0
+                    for future in as_completed(futures):
+                        if cancel and cancel.is_set():
+                            return
+                        name, result = future.result()
+                        if isinstance(result, str) and result.startswith('ERROR'):
+                            errors.append(f'{name}: {result}')
+                            print(f'[DELTA] {name} failed: {result}')
+                        else:
+                            all_delta_rows.extend(result)
+                        completed += 1
+                        status['progress'] = 10 + int((completed / len(delta_queries)) * 35)
+                        status['message'] = f'Fetched {completed}/{len(delta_queries)} tables...'
 
             delta_rows = all_delta_rows
             _t1 = time.time()
@@ -1478,4 +1496,84 @@ class SnapshotManager:
             'divisi_list': divisi_list,
             'satuans': satuans,
         }
+
+    # ──────────── Auto Update ────────────
+
+    @classmethod
+    def start_auto_update(cls, interval=60):
+        if cls._auto_update_thread and cls._auto_update_thread.is_alive():
+            return
+        cls._auto_update_stop_event = threading.Event()
+        cls._auto_update_thread = threading.Thread(
+            target=cls._auto_update_loop,
+            args=(interval,),
+            daemon=True
+        )
+        cls._auto_update_thread.start()
+        logging.info("[AUTO UPDATE] Background sequential auto-update started.")
+
+    @classmethod
+    def stop_auto_update(cls):
+        if cls._auto_update_stop_event:
+            cls._auto_update_stop_event.set()
+        logging.info("[AUTO UPDATE] Background sequential auto-update stopped.")
+
+    @classmethod
+    def _auto_update_loop(cls, interval):
+        from app.Models.Database import db_manager
+        while cls._auto_update_stop_event and not cls._auto_update_stop_event.is_set():
+            try:
+                servers = db_manager.get_available_servers()
+                tanggal = datetime.now().strftime('%Y-%m-%d')
+                for server in servers:
+                    if cls._auto_update_stop_event and cls._auto_update_stop_event.is_set():
+                        break
+                    
+                    server_key = server['key']
+                    
+                    # Jangan ganggu jika sedang ada refresh manual / parallel
+                    if server_key in cls._refresh_threads and cls._refresh_threads[server_key].is_alive():
+                        continue
+                    
+                    db_path = cls._db_path(server_key)
+                    if not os.path.exists(db_path):
+                        continue # Perlu refresh awal secara manual terlebih dahulu
+                        
+                    # Get last_refresh
+                    try:
+                        conn = sqlite3.connect(db_path)
+                        row = conn.execute("SELECT value FROM snapshot_meta WHERE key='last_refresh'").fetchone()
+                        conn.close()
+                        if not row:
+                            continue
+                        last_refresh = row[0]
+                    except Exception:
+                        continue
+                    
+                    old_status = cls._refresh_status.get(server_key)
+                    # Hanya jalankan jika state saat ini ready, error, empty, atau cancelled (sedang idle)
+                    if not old_status or old_status.get('state') in ('ready', 'error', 'empty', 'cancelled'):
+                        cls._refresh_cancel[server_key] = threading.Event()
+                        cls._refresh_status[server_key] = {
+                            'state': 'starting',
+                            'progress': 0,
+                            'message': 'Memulai auto update (sequential)...',
+                            'started_at': time.time(),
+                            'row_count': 0,
+                            'is_delta': True,
+                        }
+                        
+                        try:
+                            # Jalan sequential agar tidak menggunakan banyak pool connection ke DB utama
+                            cls._do_delta_refresh(server_key, tanggal, last_refresh, is_sequential=True)
+                        except Exception as e:
+                            logging.error(f"[AUTO UPDATE] Error updating {server_key}: {e}")
+                            
+                    # Beri jeda antar server
+                    time.sleep(2)
+            except Exception as e:
+                logging.error(f"[AUTO UPDATE] Loop error: {e}")
+            
+            if cls._auto_update_stop_event:
+                cls._auto_update_stop_event.wait(interval)
 
