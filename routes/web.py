@@ -76,11 +76,15 @@ def register_routes(app):
     # ==========================================================
     Route.post('/stok/snapshot/refresh', AuthController.super_admin_required(StokController.trigger_refresh))
     Route.post('/stok/snapshot/delta', AuthController.admin_required(StokController.trigger_delta_refresh))
+    Route.post('/stok/snapshot/yearly', AuthController.admin_required(StokController.trigger_yearly_refresh))
+    Route.post('/stok/snapshot/weekly', AuthController.admin_required(StokController.trigger_weekly_refresh))
     Route.get('/stok/snapshot/status', StokController.snapshot_status)
     Route.post('/stok/snapshot/cancel', StokController.cancel_refresh)
     
     Route.post('/stok/snapshot/refresh/<path:server_key>', AuthController.super_admin_required(StokController.trigger_refresh_target))
     Route.post('/stok/snapshot/delta/<path:server_key>', AuthController.admin_required(StokController.trigger_delta_refresh_target))
+    Route.post('/stok/snapshot/yearly/<path:server_key>', AuthController.admin_required(StokController.trigger_yearly_refresh_target))
+    Route.post('/stok/snapshot/weekly/<path:server_key>', AuthController.admin_required(StokController.trigger_weekly_refresh_target))
     Route.get('/stok/snapshot/status/<path:server_key>', StokController.snapshot_status_target)
     Route.get('/stok/snapshot/status-all', StokController.global_snapshot_status)
 

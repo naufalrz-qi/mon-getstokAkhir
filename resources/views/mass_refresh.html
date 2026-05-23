@@ -10,12 +10,15 @@
         <p style="color:var(--text-muted);font-size:0.85rem;margin:0">Eksekusi pencarian data massal (Parallel Execution) pada seluruh cabang.</p>
     </div>
     <div class="d-flex gap-2 mt-2 mt-md-0">
-        <button class="btn btn-warning btn-sm" id="btn-quick-refresh-all" onclick="startMassRefresh(true)" style="color: #fff;">
-            <i class="fas fa-bolt fa-sm"></i> Mulai Quick Update (Semua Cabang)
+        <button class="btn btn-success btn-sm" id="btn-weekly-all" onclick="startMassRefresh('weekly')">
+            <i class="fas fa-bolt fa-sm"></i> Weekly Update
+        </button>
+        <button class="btn btn-warning btn-sm" id="btn-yearly-all" onclick="startMassRefresh('yearly')">
+            <i class="fas fa-calendar fa-sm"></i> Years Update
         </button>
         {% if session.get('role') == 'super_admin' %}
-        <button class="btn btn-accent btn-sm" id="btn-refresh-all" onclick="startMassRefresh(false)">
-            <i class="fas fa-sync fa-sm"></i> Mulai Full Refresh
+        <button class="btn btn-danger btn-sm" id="btn-refresh-all" onclick="startMassRefresh('full')">
+            <i class="fas fa-sync fa-sm"></i> Full Refresh
         </button>
         {% endif %}
     </div>
@@ -31,8 +34,8 @@
                     <th style="width:5%">#</th>
                     <th style="width:25%">Nama Cabang</th>
                     <th style="width:15%">Host</th>
-                    <th style="width:45%">Status Polling (Realtime)</th>
-                    <th style="width:10%" class="text-end">Aksi</th>
+                    <th style="width:35%">Status Polling (Realtime)</th>
+                    <th style="width:20%" class="text-end">Aksi</th>
                 </tr>
             </thead>
             <tbody id="servers-tbody">
@@ -101,9 +104,10 @@
                 </td>
                 <td class="text-end">
                     <div class="d-flex justify-content-end gap-1">
-                        <button class="btn btn-glass btn-sm text-warning" id="btn-quick-indiv-${s.key}" onclick="startSingleRefresh('${s.key}', true)" title="Quick Update (Delta)"><i class="fas fa-bolt"></i></button>
+                        <button class="btn btn-glass btn-sm text-success" id="btn-weekly-${s.key}" onclick="startSingleRefresh('${s.key}', 'weekly')" title="Weekly Update"><i class="fas fa-bolt"></i> Weekly</button>
+                        <button class="btn btn-glass btn-sm text-warning" id="btn-yearly-${s.key}" onclick="startSingleRefresh('${s.key}', 'yearly')" title="Years Update"><i class="fas fa-calendar"></i> Yearly</button>
                         {% if session.get('role') == 'super_admin' %}
-                        <button class="btn btn-glass btn-sm" id="btn-indiv-${s.key}" onclick="startSingleRefresh('${s.key}', false)" title="Full Refresh">Refresh</button>
+                        <button class="btn btn-glass btn-sm text-danger" id="btn-full-${s.key}" onclick="startSingleRefresh('${s.key}', 'full')" title="Full Refresh"><i class="fas fa-sync"></i> Full</button>
                         {% endif %}
                     </div>
                 </td>
@@ -112,52 +116,62 @@
         });
     }
 
-    function startMassRefresh(isQuick = false) {
+    function startMassRefresh(type = 'full') {
         if(isMassRefreshing) return;
         isMassRefreshing = true;
         
         const btnAll = document.getElementById('btn-refresh-all');
-        const btnQuickAll = document.getElementById('btn-quick-refresh-all');
-        const activeBtn = isQuick ? btnQuickAll : btnAll;
+        const btnYearlyAll = document.getElementById('btn-yearly-all');
+        const btnWeeklyAll = document.getElementById('btn-weekly-all');
         
-        btnAll.disabled = true;
-        btnQuickAll.disabled = true;
+        const activeBtn = type === 'weekly' ? btnWeeklyAll : (type === 'yearly' ? btnYearlyAll : btnAll);
+        
+        if(btnAll) btnAll.disabled = true;
+        if(btnYearlyAll) btnYearlyAll.disabled = true;
+        if(btnWeeklyAll) btnWeeklyAll.disabled = true;
+        
         const orgText = activeBtn.innerHTML;
-        activeBtn.innerHTML = '<i class="fas fa-spinner fa-spin fa-sm"></i> Mengeksekusi Paralel...';
+        activeBtn.innerHTML = '<i class="fas fa-spinner fa-spin fa-sm"></i> Mengeksekusi...';
         
         const promises = serversData.map(s => {
-            return startSingleRefresh(s.key, isQuick);
+            return startSingleRefresh(s.key, type);
         });
 
         Promise.all(promises).then(() => {
             isMassRefreshing = false;
-            btnAll.disabled = false;
-            btnQuickAll.disabled = false;
-            activeBtn.innerHTML = '<i class="fas fa-check-circle fa-sm"></i> Selesai (Disinkronkan)';
+            if(btnAll) btnAll.disabled = false;
+            if(btnYearlyAll) btnYearlyAll.disabled = false;
+            if(btnWeeklyAll) btnWeeklyAll.disabled = false;
+            activeBtn.innerHTML = '<i class="fas fa-check-circle fa-sm"></i> Selesai';
             setTimeout(() => { activeBtn.innerHTML = orgText; }, 3000);
             showAlert('success', 'Semua Eksekusi Paralel telah Selesai');
         });
     }
 
     // Returns a promise that resolves when the snapshot is fully ready or errored
-    function startSingleRefresh(serverKey, isQuick = false) {
+    function startSingleRefresh(serverKey, type = 'full') {
         return new Promise((resolve) => {
-            const btn = document.getElementById(`btn-indiv-${serverKey}`);
-            const btnQ = document.getElementById(`btn-quick-indiv-${serverKey}`);
-            if(btn) btn.disabled = true;
-            if(btnQ) btnQ.disabled = true;
-            if(!isQuick && btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-            if(isQuick && btnQ) btnQ.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            const btnF = document.getElementById(`btn-full-${serverKey}`);
+            const btnY = document.getElementById(`btn-yearly-${serverKey}`);
+            const btnW = document.getElementById(`btn-weekly-${serverKey}`);
+            
+            if(btnF) btnF.disabled = true;
+            if(btnY) btnY.disabled = true;
+            if(btnW) btnW.disabled = true;
+            
+            const btnActive = type === 'weekly' ? btnW : (type === 'yearly' ? btnY : btnF);
+            if(btnActive) btnActive.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 
-            const endpoint = isQuick ? `/stok/snapshot/delta/${serverKey}` : `/stok/snapshot/refresh/${serverKey}`;
+            let endpoint = `/stok/snapshot/refresh/${serverKey}`;
+            if (type === 'weekly') endpoint = `/stok/snapshot/weekly/${serverKey}`;
+            else if (type === 'yearly') endpoint = `/stok/snapshot/yearly/${serverKey}`;
 
             fetch(endpoint, { method: 'POST' })
                 .then(r => r.json())
                 .then(data => {
                     if (data.status === 'error') {
                         updateRowUI(serverKey, { state: 'error', message: data.message });
-                        if(btn) { btn.disabled = false; btn.innerHTML = 'Refresh'; }
-                        if(btnQ) { btnQ.disabled = false; btnQ.innerHTML = '<i class="fas fa-bolt"></i>'; }
+                        resetIndivButtons(serverKey);
                         resolve();
                     } else if (data.status === 'already_running') {
                         startPolling(serverKey, resolve);
@@ -167,11 +181,19 @@
                 })
                 .catch(err => {
                     updateRowUI(serverKey, { state: 'error', message: err.message });
-                    if(btn) { btn.disabled = false; btn.innerHTML = 'Refresh'; }
-                    if(btnQ) { btnQ.disabled = false; btnQ.innerHTML = '<i class="fas fa-bolt"></i>'; }
+                    resetIndivButtons(serverKey);
                     resolve();
                 });
         });
+    }
+
+    function resetIndivButtons(serverKey) {
+        const btnF = document.getElementById(`btn-full-${serverKey}`);
+        const btnY = document.getElementById(`btn-yearly-${serverKey}`);
+        const btnW = document.getElementById(`btn-weekly-${serverKey}`);
+        if(btnF) { btnF.disabled = false; btnF.innerHTML = '<i class="fas fa-sync"></i> Full'; }
+        if(btnY) { btnY.disabled = false; btnY.innerHTML = '<i class="fas fa-calendar"></i> Yearly'; }
+        if(btnW) { btnW.disabled = false; btnW.innerHTML = '<i class="fas fa-bolt"></i> Weekly'; }
     }
 
     function checkStatus(serverKey, onComplete = null) {
@@ -194,10 +216,7 @@
                     if (data.state === 'ready' || data.state === 'error' || data.state === 'cancelled') {
                         clearInterval(pollingIntervals[serverKey]);
                         delete pollingIntervals[serverKey];
-                        const btn = document.getElementById(`btn-indiv-${serverKey}`);
-                        const btnQ = document.getElementById(`btn-quick-indiv-${serverKey}`);
-                        if(btn) { btn.disabled = false; btn.innerHTML = 'Refresh'; }
-                        if(btnQ) { btnQ.disabled = false; btnQ.innerHTML = '<i class="fas fa-bolt"></i>'; }
+                        resetIndivButtons(serverKey);
                         if(onComplete) onComplete();
                     }
                 })
