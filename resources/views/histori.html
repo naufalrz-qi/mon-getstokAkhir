@@ -3,85 +3,31 @@
 
 {% block extra_css %}
 <style>
-    .histori-container {
-        max-width: 1400px;
-        margin: 0 auto;
-    }
+    .histori-container { max-width: 1400px; margin: 0 auto; }
     .search-section {
-        background: var(--bg-card);
-        backdrop-filter: blur(12px);
-        border: 1px solid var(--border-glass);
-        border-radius: 20px;
-        padding: 1.5rem;
-        margin-bottom: 2rem;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.02);
+        background: var(--bg-card); border: 1px solid var(--border-card);
+        border-radius: var(--radius); padding: 1.5rem; margin-bottom: 1.5rem;
+        box-shadow: var(--shadow-sm);
     }
     .table-container {
-        background: var(--bg-card);
-        backdrop-filter: blur(12px);
-        border: 1px solid var(--border-glass);
-        border-radius: 16px;
-        overflow: hidden;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.03);
+        background: var(--bg-card); border: 1px solid var(--border-card);
+        border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-sm);
     }
     .table thead th {
-        background: rgba(79, 70, 229, 0.03);
-        color: var(--accent);
-        text-transform: uppercase;
-        font-size: 0.65rem;
-        letter-spacing: 0.05em;
-        padding: 0.75rem;
-        border-bottom: 1px solid var(--border-glass);
-        white-space: nowrap;
-        cursor: pointer;
-        transition: background-color 0.2s;
-        position: relative;
+        background: #faf7f4; color: var(--text-secondary);
+        text-transform: uppercase; font-size: 0.65rem; letter-spacing: 0.05em;
+        padding: 0.75rem; border-bottom: 2px solid var(--border-light);
+        white-space: nowrap; cursor: pointer; transition: background 0.15s;
     }
-    .table thead th:hover {
-        background: rgba(79, 70, 229, 0.08);
-    }
-    .table thead th i.sort-icon {
-        margin-left: 5px;
-        font-size: 0.6rem;
-        opacity: 0.4;
-    }
-    .table thead th.active i.sort-icon {
-        opacity: 1;
-        color: var(--accent-light);
-    }
-    .table td {
-        padding: 0.6rem 0.75rem;
-        border-bottom: 1px solid rgba(0,0,0,0.03);
-        font-size: 0.78rem;
-        vertical-align: middle;
-    }
-    .saldo-badge {
-        font-weight: 700;
-        color: var(--accent);
-        background: var(--accent-glow);
-        padding: 0.2rem 0.5rem;
-        border-radius: 6px;
-    }
-    .empty-state {
-        padding: 4rem 2rem;
-        text-align: center;
-        color: var(--text-muted);
-    }
-    .empty-icon {
-        font-size: 3rem;
-        margin-bottom: 1.5rem;
-        opacity: 0.3;
-    }
-    .total-row {
-        background: rgba(0,0,0,0.01);
-        font-weight: 700;
-    }
-    .sticky-col {
-        position: sticky;
-        left: 0;
-        background: white;
-        z-index: 1;
-    }
+    .table thead th:hover { background: var(--accent-bg); }
+    .table thead th i.sort-icon { margin-left: 5px; font-size: 0.6rem; opacity: 0.4; }
+    .table thead th.active i.sort-icon { opacity: 1; color: var(--accent); }
+    .table td { padding: 0.6rem 0.75rem; border-bottom: 1px solid #f3ede7; font-size: 0.78rem; vertical-align: middle; }
+    .saldo-badge { font-weight: 700; color: var(--accent); background: var(--accent-bg); padding: 0.2rem 0.5rem; border-radius: var(--radius-xs); }
+    .empty-state { padding: 4rem 2rem; text-align: center; color: var(--text-muted); }
+    .empty-icon { font-size: 3rem; margin-bottom: 1.5rem; opacity: 0.3; color: var(--accent); }
+    .total-row { background: var(--accent-bg); font-weight: 700; }
+    .sticky-col { position: sticky; left: 0; background: var(--bg-card); z-index: 1; }
 </style>
 {% endblock %}
 
@@ -152,7 +98,7 @@
     <!-- Result Area -->
     <div id="result-area" class="fade-up" style="animation-delay: 0.2s; display: none;">
         <!-- Item Info Header -->
-        <div class="glass-card p-3 mb-3 d-flex align-items-center justify-content-between border-start border-4 border-primary">
+        <div class="glass-card p-3 mb-3 d-flex align-items-center justify-content-between border-start border-3">
             <div>
                 <span class="badge-glass mb-1" id="info-kd-barang">BRG-001</span>
                 <h5 class="mb-0" id="info-nama-barang" style="font-weight: 700;">Nama Barang</h5>
@@ -186,7 +132,7 @@
                     <tbody id="histori-tbody">
                         <!-- Data rows here -->
                     </tbody>
-                    <tfoot class="total-row sticky-bottom" style="background: var(--bg-secondary);">
+                    <tfoot class="total-row sticky-bottom" style="background: #faf7f4;">
                         <tr>
                             <td colspan="7" class="text-end">TOTAL (TERFILTER)</td>
                             <td class="text-end text-success" id="total-debet">0</td>

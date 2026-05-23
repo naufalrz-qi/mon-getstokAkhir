@@ -14,7 +14,7 @@
         <button class="btn btn-glass btn-sm" onclick="refreshSnapshot()" id="btn-refresh" title="Rebuild semua data dari server">
             <i class="fas fa-sync-alt fa-sm"></i> Full Refresh
         </button>
-        <button class="btn btn-sm" id="btn-delta" onclick="deltaRefresh()" title="Update perubahan terbaru saja (~1-3 detik)" style="background:rgba(16,185,129,0.05);color:var(--success);border:1px solid rgba(16,185,129,0.2);border-radius:8px">
+        <button class="btn btn-sm" id="btn-delta" onclick="deltaRefresh()" title="Update perubahan terbaru saja (~1-3 detik)" style="background:var(--success-bg);color:var(--success);border:1px solid rgba(63,185,80,0.25);border-radius:6px">
             <i class="fas fa-bolt fa-sm"></i> Quick Update
         </button>
         <span class="badge-glass" id="snapshot-tanggal-badge" style="font-size:0.75rem;display:none">
@@ -32,7 +32,7 @@
 <div id="snapshot-banner" class="glass-card p-3 mb-4 fade-up" style="animation-delay:0.05s">
     <div class="d-flex align-items-center justify-content-between">
         <div class="d-flex align-items-center gap-3" style="flex:1">
-            <div id="snapshot-icon" style="width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--accent-glow)">
+            <div id="snapshot-icon" style="width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--accent-bg)">
                 <i class="fas fa-database" style="color:var(--accent-light)"></i>
             </div>
             <div style="flex:1">
@@ -41,14 +41,14 @@
                     <span class="badge-glass" id="snapshot-badge" style="font-size:0.65rem">Checking...</span>
                 </div>
                 <div id="snapshot-progress-wrap" style="display:none">
-                    <div style="background:var(--bg-glass);border-radius:6px;height:6px;overflow:hidden;margin-bottom:4px">
+                    <div style="background:#f5f0eb;border-radius:6px;height:6px;overflow:hidden;margin-bottom:4px">
                         <div id="snapshot-progress-bar" style="height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-light));border-radius:6px;width:0%;transition:width 0.3s ease"></div>
                     </div>
                 </div>
                 <p style="color:var(--text-muted);font-size:0.75rem;margin:0" id="snapshot-message">Mengecek status...</p>
             </div>
         </div>
-        <button class="btn btn-sm" id="btn-cancel" style="display:none;background:rgba(239,68,68,0.15);color:var(--danger);border:1px solid rgba(239,68,68,0.3);border-radius:8px;font-size:0.75rem" onclick="cancelRefresh()">
+        <button class="btn btn-sm" id="btn-cancel" style="display:none;background:var(--danger-bg);color:var(--danger);border:1px solid rgba(248,81,73,0.2);border-radius:6px;font-size:0.75rem" onclick="cancelRefresh()">
             <i class="fas fa-times fa-sm"></i> Batal
         </button>
     </div>
@@ -56,26 +56,40 @@
 
 <!-- Search Section -->
 <div class="glass-card p-4 mb-4 fade-up" style="animation-delay:0.1s">
-    <div class="row g-2 align-items-end">
-        <div class="col-md-2 col-6">
-            <label class="form-label">Tanggal</label>
-            <input type="date" id="filter-tanggal" class="form-control form-control-sm" value="{{ tanggal }}">
-        </div>
-        <div class="col-md-2 col-6">
+    <!-- Row 1: Main Search -->
+    <div class="row g-3 align-items-end mb-3">
+        <div class="col-md-2 col-12">
             <label class="form-label">Cari Berdasarkan</label>
             <select id="filter-type" class="form-select form-select-sm">
                 <option value="nama">Nama Barang</option>
                 <option value="kode">Kode Barang</option>
             </select>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-6 col-12">
             <label class="form-label">Kata Kunci</label>
             <div class="input-group input-group-sm">
-                <input type="text" id="filter-search" class="form-control" placeholder="Ketik nama atau kode barang...">
-                <button class="btn btn-accent" onclick="doSearch()" id="btn-search">
-                    <i class="fas fa-search fa-sm"></i>
+                <input type="text" id="filter-search" class="form-control" placeholder="Ketik nama atau kode barang lalu tekan Enter...">
+                <button class="btn btn-accent px-4" onclick="doSearch()" id="btn-search">
+                    <i class="fas fa-search me-1"></i> Cari
                 </button>
             </div>
+        </div>
+        <div class="col-md-4 col-12 d-flex flex-column justify-content-end align-items-md-end">
+            <div class="d-flex gap-2 mb-2">
+                <span class="badge-glass" id="search-time" style="display:none"><i class="fas fa-bolt fa-xs" style="color:var(--warning)"></i> <span id="search-ms">0</span>ms</span>
+                <span class="badge-glass" id="search-source" style="display:none"><i class="fas fa-memory fa-xs"></i> <span id="source-text">memory</span></span>
+            </div>
+            <span style="font-size:0.75rem;color:var(--text-muted)">
+                <i class="fas fa-lightbulb fa-xs text-warning"></i> Auto-search on <kbd style="background:#f5f0eb;border:1px solid var(--border-card);padding:0.1rem 0.3rem;border-radius:3px">Enter</kbd>
+            </span>
+        </div>
+    </div>
+    
+    <!-- Row 2: Filters -->
+    <div class="row g-2 pt-3 align-items-end" style="border-top:1px dashed var(--border-light)">
+        <div class="col-md-2 col-6">
+            <label class="form-label">Tanggal</label>
+            <input type="date" id="filter-tanggal" class="form-control form-control-sm" value="{{ tanggal }}">
         </div>
         <div class="col-md-2 col-6">
             <label class="form-label">Divisi</label>
@@ -83,32 +97,45 @@
                 <option value="">Semua</option>
             </select>
         </div>
-        <div class="col-md-1 col-6">
+        <div class="col-md-2 col-6">
+            <label class="form-label">Kategori</label>
+            <select id="filter-kategori" class="form-select form-select-sm">
+                <option value="">Semua</option>
+            </select>
+        </div>
+        <div class="col-md-2 col-6">
+            <label class="form-label">Merk</label>
+            <select id="filter-merk" class="form-select form-select-sm">
+                <option value="">Semua</option>
+            </select>
+        </div>
+        <div class="col-md-2 col-6">
+            <label class="form-label">Urutkan</label>
+            <select id="filter-sort" class="form-select form-select-sm">
+                <option value="">Default</option>
+                <option value="barang-asc">Nama A-Z</option>
+                <option value="barang-desc">Nama Z-A</option>
+                <option value="stok_akhir-asc">Stok Terendah</option>
+                <option value="stok_akhir-desc">Stok Terbanyak</option>
+                <option value="harga_avg-desc">Harga Tertinggi</option>
+                <option value="harga_avg-asc">Harga Terendah</option>
+            </select>
+        </div>
+        <div class="col-md-2 col-6">
             <label class="form-label">Min Stok</label>
             <input type="number" id="filter-min-stok" class="form-control form-control-sm" value="10" min="0">
         </div>
-        <div class="col-md-2 col-6">
-            <label class="form-label" style="opacity:0">.</label>
-            <div class="d-flex gap-1">
-                <span class="badge-glass" id="search-time" style="font-size:0.65rem;display:none"><i class="fas fa-bolt fa-xs" style="color:var(--warning)"></i> <span id="search-ms">0</span>ms</span>
-                <span class="badge-glass" id="search-source" style="font-size:0.65rem;display:none"><i class="fas fa-memory fa-xs"></i> <span id="source-text">memory</span></span>
-            </div>
-        </div>
-    </div>
-    <div class="mt-2" style="font-size:0.72rem;color:var(--text-muted)">
-        <i class="fas fa-lightbulb fa-xs" style="color:var(--warning)"></i>
-        Tip: Gunakan <code style="color:var(--accent-light)">%</code> sebagai wildcard. Contoh: <code style="color:var(--accent-light)">KA %</code> atau <code style="color:var(--accent-light)">%KEMBANG%</code>
     </div>
 </div>
 
 <!-- Welcome State -->
 <div id="welcome-state" class="glass-card text-center py-5 mb-4 fade-up" style="animation-delay:0.15s">
-    <div style="width:80px;height:80px;margin:0 auto 1.5rem;background:var(--accent-glow);border-radius:20px;display:flex;align-items:center;justify-content:center">
+    <div style="width:80px;height:80px;margin:0 auto 1.5rem;background:var(--accent-bg);border-radius:20px;display:flex;align-items:center;justify-content:center">
         <i class="fas fa-search" style="font-size:2rem;color:var(--accent-light)"></i>
     </div>
     <h5 style="font-weight:700;margin-bottom:0.5rem">Mulai Pencarian</h5>
     <p style="color:var(--text-muted);font-size:0.85rem;max-width:400px;margin:0 auto" id="welcome-text">
-        Ketik nama atau kode barang, lalu tekan <kbd style="background:var(--bg-glass);border:1px solid var(--border-glass);padding:0.1rem 0.4rem;border-radius:4px;font-size:0.75rem">Enter</kbd>
+        Ketik nama atau kode barang, lalu tekan <kbd style="background:#f5f0eb;border:1px solid var(--border-card);padding:0.1rem 0.4rem;border-radius:4px;font-size:0.75rem">Enter</kbd>
     </p>
 </div>
 
@@ -116,28 +143,28 @@
 <div class="row g-3 mb-4" id="stats-container" style="display:none">
     <div class="col-6 col-lg-3">
         <div class="stat-card">
-            <div class="stat-icon" style="background:var(--accent-glow);color:var(--accent-light)"><i class="fas fa-boxes"></i></div>
+            <div class="stat-icon" style="background:var(--accent-bg);color:var(--accent)"><i class="fas fa-boxes"></i></div>
             <div class="stat-value" id="stat-items">-</div>
             <div class="stat-label">Total Item</div>
         </div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="stat-card">
-            <div class="stat-icon" style="background:rgba(16,185,129,0.1);color:var(--success)"><i class="fas fa-sitemap"></i></div>
+            <div class="stat-icon" style="background:var(--success-bg);color:var(--success)"><i class="fas fa-sitemap"></i></div>
             <div class="stat-value" id="stat-divisi">-</div>
             <div class="stat-label">Divisi</div>
         </div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="stat-card">
-            <div class="stat-icon" style="background:rgba(245,158,11,0.1);color:var(--warning)"><i class="fas fa-coins"></i></div>
+            <div class="stat-icon" style="background:var(--warning-bg);color:var(--warning)"><i class="fas fa-coins"></i></div>
             <div class="stat-value" id="stat-nominal" style="font-size:1.1rem">Rp -</div>
             <div class="stat-label">Total Nominal</div>
         </div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="stat-card">
-            <div class="stat-icon" style="background:rgba(239,68,68,0.1);color:var(--danger)"><i class="fas fa-layer-group"></i></div>
+            <div class="stat-icon" style="background:var(--danger-bg);color:var(--danger)"><i class="fas fa-layer-group"></i></div>
             <div class="stat-value" id="stat-avg">-</div>
             <div class="stat-label">Avg Stok</div>
         </div>
@@ -150,17 +177,17 @@
         <span><i class="fas fa-table fa-sm"></i> Hasil Pencarian</span>
         <div class="d-flex gap-2 align-items-center">
             <!-- Export Button -->
-            <button class="btn btn-glass btn-sm" onclick="exportXlsx()" id="btn-export" style="display:none; font-size: 0.7rem; color: #10B981; border-color: rgba(16, 185, 129, 0.2);">
+            <button class="btn btn-glass btn-sm" onclick="exportXlsx()" id="btn-export" style="display:none; font-size: 0.7rem; color: var(--success); border-color: rgba(34,160,107,0.25);">
                 <i class="fas fa-file-excel fa-xs"></i> Export
             </button>
             <!-- Result filter -->
-            <input type="text" id="result-filter" class="form-control form-control-sm" placeholder="Filter hasil..." style="width:200px;background:var(--bg-glass);border-color:var(--border-glass);color:var(--text-primary);font-size:0.75rem" oninput="filterResults()">
+            <input type="text" id="result-filter" class="form-control form-control-sm" placeholder="Filter hasil..." style="width:200px;background:#f5f0eb;border-color:var(--border-card);color:var(--text-primary);font-size:0.75rem" oninput="filterResults()">
             <!-- Column toggle -->
             <div class="dropdown">
                 <button class="btn btn-glass btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" style="font-size:0.7rem">
                     <i class="fas fa-columns fa-xs"></i> Kolom
                 </button>
-                <ul class="dropdown-menu dropdown-menu-end" style="background:var(--bg-secondary);border-color:var(--border-glass);font-size:0.75rem;padding:0.5rem" id="col-toggles">
+                <ul class="dropdown-menu dropdown-menu-end" style="background:var(--bg-secondary);border-color:var(--border-card);font-size:0.75rem;padding:0.5rem" id="col-toggles">
                     <li><label class="dropdown-item d-flex gap-2 align-items-center" style="color:var(--text-primary);cursor:pointer"><input type="checkbox" data-col="0" checked> Kd Divisi</label></li>
                     <li><label class="dropdown-item d-flex gap-2 align-items-center" style="color:var(--text-primary);cursor:pointer"><input type="checkbox" data-col="1" checked> Divisi</label></li>
                     <li><label class="dropdown-item d-flex gap-2 align-items-center" style="color:var(--text-primary);cursor:pointer"><input type="checkbox" data-col="2" checked> Kode Barang</label></li>
@@ -382,22 +409,22 @@
 
         if (['starting', 'fetching', 'writing'].includes(data.state)) {
             badge.textContent = 'Loading...';
-            badge.style.background = 'rgba(245,158,11,0.15)';
+            badge.style.background = 'var(--warning-bg)';
             badge.style.color = 'var(--warning)';
             progressWrap.style.display = 'block';
             progressBar.style.width = (data.progress || 0) + '%';
             cancelBtn.style.display = 'inline-flex';
             icon.innerHTML = '<i class="fas fa-spinner fa-spin" style="color:var(--warning)"></i>';
-            icon.style.background = 'rgba(245,158,11,0.1)';
+            icon.style.background = 'var(--warning-bg)';
         } else if (data.state === 'ready') {
             const info = data.snapshot_info || {};
             badge.textContent = `${data.mem_count || info.row_count || 0} items`;
-            badge.style.background = 'rgba(16,185,129,0.15)';
+            badge.style.background = 'var(--success-bg)';
             badge.style.color = 'var(--success)';
             progressWrap.style.display = 'none';
             cancelBtn.style.display = 'none';
             icon.innerHTML = '<i class="fas fa-check-circle" style="color:var(--success)"></i>';
-            icon.style.background = 'rgba(16,185,129,0.1)';
+            icon.style.background = 'var(--success-bg)';
             // Show snapshot date
             const tglBadge = document.getElementById('snapshot-tanggal-badge');
             const tglText = document.getElementById('snapshot-tanggal-text');
@@ -410,15 +437,15 @@
             }
         } else if (data.state === 'error') {
             badge.textContent = 'Error';
-            badge.style.background = 'rgba(239,68,68,0.15)';
+            badge.style.background = 'var(--danger-bg)';
             badge.style.color = 'var(--danger)';
             progressWrap.style.display = 'none';
             cancelBtn.style.display = 'none';
             icon.innerHTML = '<i class="fas fa-exclamation-triangle" style="color:var(--danger)"></i>';
-            icon.style.background = 'rgba(239,68,68,0.1)';
+            icon.style.background = 'var(--danger-bg)';
         } else {
             badge.textContent = 'No Data';
-            badge.style.background = 'rgba(148,163,184,0.15)';
+            badge.style.background = 'rgba(168,162,158,0.1)';
             badge.style.color = 'var(--text-muted)';
             progressWrap.style.display = 'none';
             cancelBtn.style.display = 'none';
@@ -442,6 +469,9 @@
 
         const searchType = document.getElementById('filter-type').value;
         const divisi = document.getElementById('filter-divisi').value;
+        const kategori = document.getElementById('filter-kategori').value;
+        const merk = document.getElementById('filter-merk').value;
+        const sortVal = document.getElementById('filter-sort').value;
         const minStok = document.getElementById('filter-min-stok').value;
 
         // Show data sections
@@ -451,14 +481,19 @@
         document.getElementById('low-stock-card').style.display = 'block';
         document.getElementById('btn-export').style.display = 'inline-flex';
 
-        const searchWithWild = searchVal.includes('%') ? searchVal : searchVal + '%';
-
         const url = new URL('/stok/monitoring', window.location.origin);
         if (divisi) url.searchParams.append('divisi', divisi);
+        if (kategori) url.searchParams.append('kategori', kategori);
+        if (merk) url.searchParams.append('merk', merk);
+        if (sortVal) {
+            const [sortBy, sortOrder] = sortVal.split('-');
+            url.searchParams.append('sort_by', sortBy);
+            url.searchParams.append('sort_order', sortOrder);
+        }
         if (searchType === 'kode') {
-            url.searchParams.append('search_kode', searchWithWild);
+            url.searchParams.append('search_kode', searchVal);
         } else {
-            url.searchParams.append('search_nama', searchWithWild);
+            url.searchParams.append('search_nama', searchVal);
         }
 
         const t0 = performance.now();
@@ -486,8 +521,12 @@
                         });
                     }
 
+                    // Populate kategori & merk filters from data
+                    populateFilterOptions('filter-kategori', data.data, 'Kategori');
+                    populateFilterOptions('filter-merk', data.data, 'Merk');
+
                     // Low stock
-                    loadLowStockAlert(searchType, searchWithWild, minStok);
+                    loadLowStockAlert(searchType, searchVal, minStok);
                 } else if (data.status === 'no_snapshot') {
                     showAlert('error', data.message);
                 } else {
@@ -495,6 +534,17 @@
                 }
             })
             .catch(err => showAlert('error', 'Error: ' + err.message));
+    }
+
+    function populateFilterOptions(selectId, data, field) {
+        const sel = document.getElementById(selectId);
+        if (sel.options.length > 1) return; // already populated
+        const unique = [...new Set(data.map(r => r[field]).filter(Boolean))].sort();
+        unique.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v; opt.textContent = v;
+            sel.appendChild(opt);
+        });
     }
 
     // ──────────── Render ────────────
@@ -703,7 +753,7 @@
             const s = row['Stok Akhir'];
             const cls = s === 0 ? 'stock-danger' : 'stock-warning';
             const label = s === 0 ? 'Habis' : 'Rendah';
-            const bg = s === 0 ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)';
+            const bg = s === 0 ? 'var(--danger-bg)' : 'var(--warning-bg)';
             const col = s === 0 ? 'var(--danger)' : 'var(--warning)';
             const tr = document.createElement('tr');
             tr.innerHTML = `

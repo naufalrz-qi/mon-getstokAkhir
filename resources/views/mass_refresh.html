@@ -220,23 +220,23 @@
         
         if (['starting', 'fetching', 'writing'].includes(data.state)) {
             badge.textContent = data.state.toUpperCase();
-            badge.style.background = 'rgba(245,158,11,0.15)';
+            badge.style.background = 'rgba(255,210,0,0.15)';
             badge.style.color = 'var(--warning)';
             progress.style.width = (data.progress || 0) + '%';
             progress.style.background = 'linear-gradient(90deg,var(--warning),var(--danger))';
         } else if (data.state === 'ready') {
             const rowCount = data.mem_count || (data.snapshot_info && data.snapshot_info.row_count) || 0;
             badge.textContent = `READY (${rowCount} ITEM)`;
-            badge.style.background = 'rgba(16,185,129,0.15)';
+            badge.style.background = 'var(--success-bg)';
             badge.style.color = 'var(--success)';
             progress.style.width = '100%';
             progress.style.background = 'linear-gradient(90deg,var(--accent),var(--success))';
         } else if (data.state === 'error') {
             badge.textContent = 'ERROR';
-            badge.style.background = 'rgba(239,68,68,0.15)';
+            badge.style.background = 'rgba(255,77,106,0.15)';
             badge.style.color = 'var(--danger)';
             progress.style.width = '100%';
-            progress.style.background = 'rgba(239,68,68,0.5)';
+            progress.style.background = 'rgba(255,77,106,0.5)';
         } else {
             badge.textContent = 'IDLE';
             badge.style.background = 'var(--bg-glass)';

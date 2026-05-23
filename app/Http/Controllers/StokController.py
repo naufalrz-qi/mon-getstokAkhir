@@ -229,12 +229,21 @@ class StokController:
             search_kode = request.args.get('search_kode')
             search_nama = request.args.get('search_nama')
             divisi = request.args.get('divisi')
-            
+            kategori = request.args.get('kategori')
+            merk = request.args.get('merk')
+            sort_by = request.args.get('sort_by')
+            sort_order = request.args.get('sort_order', 'asc')
+
             # Pagination params
             limit = request.args.get('limit', type=int)
             offset = request.args.get('offset', type=int)
 
-            result = SnapshotManager.search(server_key, search_kode, search_nama, divisi, limit, offset)
+            result = SnapshotManager.search(
+                server_key, search_kode, search_nama, divisi,
+                kategori=kategori, merk=merk,
+                limit=limit, offset=offset,
+                sort_by=sort_by, sort_order=sort_order
+            )
             return jsonify(result)
 
         except Exception as e:
@@ -251,8 +260,14 @@ class StokController:
             search_kode = request.args.get('search_kode')
             search_nama = request.args.get('search_nama')
             divisi = request.args.get('divisi')
+            status = request.args.get('status')
+            sort_by = request.args.get('sort_by')
+            sort_order = request.args.get('sort_order', 'desc')
 
-            result = SnapshotManager.search_opname(server_key, search_kode, search_nama, divisi)
+            result = SnapshotManager.search_opname(
+                server_key, search_kode, search_nama, divisi,
+                status=status, sort_by=sort_by, sort_order=sort_order
+            )
             return jsonify(result)
 
         except Exception as e:

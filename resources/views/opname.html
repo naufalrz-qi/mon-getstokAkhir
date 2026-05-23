@@ -2,225 +2,53 @@
 {% block title %}Opname Stok - StokMonitor{% endblock %}
 
 {% block extra_css %}
-/* ── POS Split Layout ── */
-.pos-container {
-    display: flex;
-    gap: 1.25rem;
-    min-height: calc(100vh - 180px);
-}
-.pos-left {
-    flex: 1 1 55%;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-}
-.pos-right {
-    flex: 0 0 42%;
-    min-width: 0;
-    position: sticky;
-    top: 80px;
-    align-self: flex-start;
-    max-height: calc(100vh - 100px);
-    overflow-y: auto;
-}
-
-/* ── Search Bar POS ── */
+<style>
+.pos-container { display: flex; gap: 1.25rem; min-height: calc(100vh - 200px); }
+.pos-left { flex: 1 1 55%; min-width: 0; display: flex; flex-direction: column; }
+.pos-right { flex: 0 0 42%; min-width: 0; position: sticky; top: 80px; align-self: flex-start; max-height: calc(100vh - 100px); overflow-y: auto; }
 .pos-search-bar {
-    background: var(--bg-card);
-    border: 2px solid var(--border-glass);
-    border-radius: 14px;
-    padding: 0.5rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    transition: border-color 0.2s;
+    background: var(--bg-card); border: 1px solid var(--border-card);
+    border-radius: var(--radius); padding: 0.5rem;
+    display: flex; align-items: center; gap: 0.5rem;
+    transition: border-color 0.2s; box-shadow: var(--shadow-sm);
 }
-.pos-search-bar:focus-within {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 4px var(--accent-glow);
-}
+.pos-search-bar:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(232,114,12,0.1); }
 .pos-search-bar .search-icon {
-    width: 42px;
-    height: 42px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, var(--accent), var(--accent-light));
-    border-radius: 10px;
-    color: #fff;
-    font-size: 1rem;
-    flex-shrink: 0;
+    width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+    background: var(--accent); border-radius: var(--radius-sm); color: #fff; font-size: 1rem; flex-shrink: 0;
 }
-.pos-search-bar input {
-    border: none;
-    background: transparent;
-    outline: none;
-    flex: 1;
-    font-size: 1rem;
-    font-weight: 500;
-    color: var(--text-primary);
-    padding: 0.5rem;
-}
+.pos-search-bar input { border: none; background: transparent; outline: none; flex: 1; font-size: 0.95rem; font-weight: 500; color: var(--text-primary); padding: 0.5rem; }
 .pos-search-bar input::placeholder { color: var(--text-muted); }
-
-/* ── Item List ── */
-.item-list {
-    flex: 1;
-    overflow-y: auto;
-    max-height: calc(100vh - 280px);
-    margin-top: 0.75rem;
-}
+.item-list { flex: 1; overflow-y: auto; max-height: calc(100vh - 280px); margin-top: 0.75rem; }
 .item-row {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.7rem 1rem;
-    border: 1px solid transparent;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    margin-bottom: 2px;
+    display: flex; align-items: center; gap: 0.75rem; padding: 0.7rem 1rem;
+    border: 1px solid transparent; border-radius: var(--radius-sm);
+    cursor: pointer; transition: all 0.15s; margin-bottom: 2px;
 }
-.item-row:hover {
-    background: var(--accent-glow);
-    border-color: rgba(79,70,229,0.15);
-}
-.item-row.active {
-    background: var(--accent-glow);
-    border-color: var(--accent);
-    box-shadow: 0 2px 12px rgba(79,70,229,0.12);
-}
-.item-row .item-stok-badge {
-    min-width: 52px;
-    text-align: center;
-    font-weight: 700;
-    font-size: 0.95rem;
-    padding: 0.3rem 0.5rem;
-    border-radius: 8px;
-    flex-shrink: 0;
-}
-.stok-ok { background: rgba(16,185,129,0.1); color: var(--success); }
-.stok-warn { background: rgba(245,158,11,0.1); color: var(--warning); }
-.stok-danger { background: rgba(239,68,68,0.1); color: var(--danger); }
-
-.item-row .item-info {
-    flex: 1;
-    min-width: 0;
-}
-.item-row .item-name {
-    font-weight: 600;
-    font-size: 0.85rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.item-row .item-meta {
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.item-row .item-code {
-    font-family: 'Courier New', monospace;
-    font-size: 0.7rem;
-    color: var(--accent-light);
-    background: var(--accent-glow);
-    padding: 0.1rem 0.4rem;
-    border-radius: 4px;
-    flex-shrink: 0;
-}
-
-/* ── Detail Panel ── */
-.detail-panel {
-    background: var(--bg-card);
-    border: 1px solid var(--border-glass);
-    border-radius: 16px;
-    overflow: hidden;
-    animation: slideIn 0.25s ease;
-}
-@keyframes slideIn {
-    from { opacity: 0; transform: translateX(12px); }
-    to { opacity: 1; transform: translateX(0); }
-}
-.detail-header {
-    padding: 1.25rem;
-    border-bottom: 1px solid var(--border-glass);
-    background: linear-gradient(135deg, rgba(79,70,229,0.04), rgba(99,102,241,0.02));
-}
-.detail-header .item-title {
-    font-size: 1.1rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-}
-.detail-section {
-    padding: 1rem 1.25rem;
-    border-bottom: 1px solid rgba(0,0,0,0.04);
-}
+.item-row:hover { background: var(--bg-hover); border-color: var(--border-light); }
+.item-row.active { background: var(--accent-bg); border-color: var(--accent); }
+.item-row .item-stok-badge { min-width: 52px; text-align: center; font-weight: 700; font-size: 0.95rem; padding: 0.3rem 0.5rem; border-radius: var(--radius-xs); flex-shrink: 0; }
+.stok-ok { background: var(--success-bg); color: var(--success); }
+.stok-warn { background: var(--warning-bg); color: var(--warning); }
+.stok-danger { background: var(--danger-bg); color: var(--danger); }
+.item-row .item-info { flex: 1; min-width: 0; }
+.item-row .item-name { font-weight: 600; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item-row .item-meta { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item-row .item-code { font-family: monospace; font-size: 0.7rem; color: var(--accent); background: var(--accent-bg); padding: 0.1rem 0.4rem; border-radius: 4px; flex-shrink: 0; }
+.detail-panel { background: var(--bg-card); border: 1px solid var(--border-card); border-radius: var(--radius); overflow: hidden; animation: slideIn 0.25s ease; box-shadow: var(--shadow-sm); }
+@keyframes slideIn { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: translateX(0); } }
+.detail-header { padding: 1.25rem; border-bottom: 1px solid var(--border-light); background: var(--bg-hover); }
+.detail-header .item-title { font-size: 1.1rem; font-weight: 700; color: var(--text-primary); }
+.detail-section { padding: 1rem 1.25rem; border-bottom: 1px solid #f3ede7; }
 .detail-section:last-child { border-bottom: none; }
-.detail-section-title {
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-muted);
-    margin-bottom: 0.75rem;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-}
-.divisi-stok-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.55rem 0.75rem;
-    border-radius: 10px;
-    margin-bottom: 4px;
-    background: rgba(0,0,0,0.015);
-    transition: background 0.15s;
-}
-.divisi-stok-row:hover { background: rgba(0,0,0,0.035); }
-
-/* ── Empty / Welcome ── */
-.detail-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 3rem 2rem;
-    text-align: center;
-    color: var(--text-muted);
-    min-height: 300px;
-}
-.detail-empty .empty-icon {
-    width: 64px;
-    height: 64px;
-    border-radius: 16px;
-    background: var(--accent-glow);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    color: var(--accent-light);
-    margin-bottom: 1rem;
-}
-
-/* ── Result count ── */
-.result-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.5rem 0;
-    font-size: 0.75rem;
-    color: var(--text-muted);
-}
-
-/* ── Responsive ── */
-@media (max-width: 992px) {
-    .pos-container { flex-direction: column; }
-    .pos-right { position: static; max-height: none; flex: none; }
-    .item-list { max-height: 50vh; }
-}
+.detail-section-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-secondary); margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.4rem; }
+.divisi-stok-row { display: flex; align-items: center; justify-content: space-between; padding: 0.55rem 0.75rem; border-radius: var(--radius-sm); margin-bottom: 4px; background: var(--bg-hover); transition: background 0.15s; }
+.divisi-stok-row:hover { background: var(--accent-bg); }
+.detail-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3rem 2rem; text-align: center; color: var(--text-muted); min-height: 300px; }
+.detail-empty .empty-icon { width: 64px; height: 64px; border-radius: var(--radius); background: var(--accent-bg); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: var(--accent); margin-bottom: 1rem; }
+.result-bar { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0; font-size: 0.75rem; color: var(--text-muted); }
+@media (max-width: 992px) { .pos-container { flex-direction: column; } .pos-right { position: static; max-height: none; flex: none; } .item-list { max-height: 50vh; } }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -232,9 +60,24 @@
         </h3>
         <p style="color:var(--text-muted);font-size:0.8rem;margin:0">Pilih barang untuk melihat stok per divisi & satuan</p>
     </div>
-    <div class="d-flex gap-2 mt-2 mt-md-0">
+    <div class="d-flex gap-2 mt-2 mt-md-0 flex-wrap">
         <select id="filter-divisi" class="form-select form-select-sm" style="width:auto;min-width:130px" onchange="doSearch()">
             <option value="">Semua Divisi</option>
+        </select>
+        <select id="filter-status" class="form-select form-select-sm" style="width:auto;min-width:120px" onchange="doSearch()">
+            <option value="">Semua Status</option>
+            <option value="Hilang">Hilang</option>
+            <option value="Rusak">Rusak</option>
+            <option value="Lain-Lain(+)">Lain-Lain(+)</option>
+            <option value="Lain-Lain (-)">Lain-Lain(-)</option>
+        </select>
+        <select id="filter-sort-opname" class="form-select form-select-sm" style="width:auto;min-width:130px" onchange="doSearch()">
+            <option value="tanggal-desc">Terbaru</option>
+            <option value="tanggal-asc">Terlama</option>
+            <option value="barang-asc">Nama A-Z</option>
+            <option value="barang-desc">Nama Z-A</option>
+            <option value="qty-desc">Qty Terbanyak</option>
+            <option value="qty-asc">Qty Terkecil</option>
         </select>
         <a href="/stok/index" class="btn btn-glass btn-sm">
             <i class="fas fa-exchange-alt fa-sm"></i> Ganti Server
@@ -343,7 +186,7 @@ function doSearch() {
 
     const type = document.getElementById('filter-type').value;
     const divisi = document.getElementById('filter-divisi').value;
-    const searchVal = val.includes('%') ? val : val + '%';
+    const searchVal = val;
 
     const url = new URL('/stok/monitoring', location.origin);
     if (type === 'kode') url.searchParams.set('search_kode', searchVal);
@@ -452,9 +295,19 @@ function selectItem(kd_barang) {
     panel.innerHTML = `<div class="text-center py-5"><div class="loader mx-auto"></div><p class="mt-2" style="font-size:0.8rem;color:var(--text-muted)">Memuat detail...</p></div>`;
 
     // Fetch stock detail + opname in parallel
+    const statusFilter = document.getElementById('filter-status').value;
+    const sortVal = document.getElementById('filter-sort-opname').value;
+    const [sortBy, sortOrder] = sortVal ? sortVal.split('-') : ['tanggal', 'desc'];
+
+    const opnameUrl = new URL('/stok/api/opname', location.origin);
+    opnameUrl.searchParams.set('search_kode', kd_barang);
+    if (statusFilter) opnameUrl.searchParams.set('status', statusFilter);
+    opnameUrl.searchParams.set('sort_by', sortBy);
+    opnameUrl.searchParams.set('sort_order', sortOrder);
+
     Promise.all([
         fetch(`/stok/api/item-stock/${encodeURIComponent(kd_barang)}`).then(r => r.json()),
-        fetch(`/stok/api/opname?search_kode=${encodeURIComponent(kd_barang)}`).then(r => r.json()),
+        fetch(opnameUrl).then(r => r.json()),
     ]).then(([stockData, opnameData]) => {
         renderDetailPanel(stockData, opnameData);
     }).catch(err => {

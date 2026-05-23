@@ -12,7 +12,7 @@ import sqlite3
 import threading
 import time
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from decimal import Decimal
@@ -232,6 +232,9 @@ class SnapshotManager:
             _t0 = time.time()
 
             last_refresh_dt = datetime.fromisoformat(last_refresh)
+            # Opsi 4: Buffer 30 detik untuk menangkap transaksi yang mungkin terlewat
+            # karena race condition NOLOCK / mid-commit
+            last_refresh_buffered = last_refresh_dt - timedelta(seconds=30)
 
             # Define delta queries — each runs in its own connection
             delta_queries = {
@@ -240,9 +243,12 @@ class SnapshotManager:
                     SELECT t.kd_divisi, d.kd_barang, 0 AS debet, d.qty AS kredit, d.kd_satuan, 'penjualan' AS source
                     FROM t_penjualan_detail d (NOLOCK)
                     INNER JOIN t_penjualan t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+                    INNER JOIN m_barang b (NOLOCK) ON d.kd_barang = b.kd_barang
+                    INNER JOIN m_kategori k (NOLOCK) ON b.kd_kategori = k.kd_kategori
                     WHERE t.tanggal_server > ?
                       AND t.tanggal > dbo.GetTanggalTerakhirTutupBuku()
                       AND CAST(t.tanggal AS DATE) <= CAST(? AS DATE)
+                      AND k.status <> 2
                 """,
                 'pembelian': """
                     SET NOCOUNT ON;
@@ -251,6 +257,7 @@ class SnapshotManager:
                     INNER JOIN t_pembelian t (NOLOCK) ON d.no_transaksi = t.no_transaksi
                     WHERE t.tanggal_server > ?
                       AND t.tanggal > dbo.GetTanggalTerakhirTutupBuku()
+                      AND t.status IN (0, 1)
                       AND CAST(t.tanggal AS DATE) <= CAST(? AS DATE)
                 """,
                 'mutasi': """
@@ -306,7 +313,7 @@ class SnapshotManager:
             }
 
             # Build params per query (mutasi and opname use UNION ALL so need 4 params)
-            base_params = [last_refresh_dt, tanggal]
+            base_params = [last_refresh_buffered, tanggal]
             query_params = {
                 'penjualan': base_params,
                 'pembelian': base_params,
@@ -423,34 +430,29 @@ class SnapshotManager:
                 status['message'] = f'Tidak ada perubahan baru ({elapsed}s)'
                 return
 
-            # Get satuan konversi from LOCAL SQLite snapshot (no network needed)
-            satuan_map = {}
-            db_path = cls._db_path(server_key)
-            try:
-                conn_local = sqlite3.connect(db_path)
-                for row in conn_local.execute('SELECT kd_barang, kd_satuan, jumlah FROM satuan_snapshot').fetchall():
-                    satuan_map[(row[0], row[1])] = float(row[2] or 1)
-                conn_local.close()
-            except Exception:
-                pass
-
-            # Accumulate delta per (kd_divisi, kd_barang)
-            delta_accum = defaultdict(lambda: 0.0)
-            for row in delta_rows:
-                kd_barang = row.get('kd_barang', '')
-                kd_divisi = row.get('kd_divisi', '')
-                kd_satuan = row.get('kd_satuan', '')
-                conv = satuan_map.get((kd_barang, kd_satuan), 1.0)
-                debet = float(row.get('debet', 0) or 0) * conv
-                kredit = float(row.get('kredit', 0) or 0) * conv
-                delta_accum[(kd_divisi, kd_barang)] += (debet - kredit)
-
+            # ── Extract unique kd_barang yang terdampak ──
+            affected_kd_barangs = list(set(r.get('kd_barang', '') for r in delta_rows if r.get('kd_barang')))
             _t2 = time.time()
-            print(f'[DELTA TIMING] Satuan + accumulate: {_t2-_t1:.2f}s ({len(delta_accum)} unique items)')
-            status['progress'] = 60
-            status['message'] = f'Memperbarui {len(delta_accum)} item...'
+            print(f'[DELTA TIMING] Identified {len(affected_kd_barangs)} affected items from {len(delta_rows)} rows')
+            status['progress'] = 55
+            status['message'] = f'Menghitung ulang stok {len(affected_kd_barangs)} item dari awal...'
 
-            # ── Step 1: Quick lock to identify existing vs missing items ──
+            if cancel and cancel.is_set():
+                return
+
+            # ── Targeted Recalculation: hitung stok dari NOL untuk item terdampak ──
+            recalc_map, master_info, div_map = cls._targeted_recalculate(
+                server_key, affected_kd_barangs, tanggal, db_manager
+            )
+            _t3 = time.time()
+            print(f'[DELTA TIMING] Targeted recalc: {_t3-_t2:.2f}s ({len(recalc_map)} results)')
+
+            if cancel and cancel.is_set():
+                return
+
+            # ── Classify: existing vs new items ──
+            status['progress'] = 70
+            status['message'] = 'Memperbarui cache...'
             with cls._cache_lock:
                 if server_key not in cls._mem_cache:
                     cls._load_to_memory(server_key)
@@ -460,64 +462,14 @@ class SnapshotManager:
                     key = (row.get('kd_divisi', ''), row.get('kd_barang', ''))
                     cache_index[key] = i
 
-            # Classify keys (no lock needed, just reading local vars)
             updated_keys = set()
-            missing_keys = set()
-            for key in delta_accum:
-                if key in cache_index:
-                    updated_keys.add(key)
-                else:
-                    missing_keys.add(key)
-
-            # ── Step 2: Fetch missing item info from MSSQL (OUTSIDE lock) ──
             new_rows = []
-            new_items_data = {}
-            div_map = {}
-            if missing_keys:
-                status['progress'] = 65
-                status['message'] = f'Mengambil info {len(missing_keys)} item baru...'
-                missing_kd_barangs = list(set(k[1] for k in missing_keys))
-                
-                conn_mssql = None
-                try:
-                    conn_mssql = db_manager.create_new_connection(server_key)
-                    cursor = conn_mssql.cursor()
-                    cursor.execute("SELECT kd_divisi, nama FROM m_divisi (NOLOCK)")
-                    div_map = {row[0]: row[1] for row in cursor.fetchall()}
-                    
-                    chunk_size = 1000
-                    for i in range(0, len(missing_kd_barangs), chunk_size):
-                        chunk = missing_kd_barangs[i:i + chunk_size]
-                        placeholders = ','.join('?' for _ in chunk)
-                        sql_new_items = f"""
-                            SELECT 
-                                b.kd_barang, b.nama, b.kd_kategori, b.kd_merk, b.kd_model, b.kd_warna, b.ukuran,
-                                k.nama AS kategori, mk.nama AS merk, mo.nama AS model, w.nama AS warna,
-                                bs.harga_jual
-                            FROM m_barang b (NOLOCK)
-                            LEFT JOIN m_kategori k (NOLOCK) ON b.kd_kategori = k.kd_kategori
-                            LEFT JOIN m_merk mk (NOLOCK) ON b.kd_merk = mk.kd_merk
-                            LEFT JOIN m_model mo (NOLOCK) ON b.kd_model = mo.kd_model
-                            LEFT JOIN m_warna w (NOLOCK) ON b.kd_warna = w.kd_warna
-                            LEFT JOIN m_barang_satuan bs (NOLOCK) ON b.kd_barang = bs.kd_barang AND bs.jumlah = 1
-                            WHERE b.kd_barang IN ({placeholders})
-                        """
-                        cursor.execute(sql_new_items, chunk)
-                        cols = [d[0] for d in cursor.description]
-                        for row in cursor.fetchall():
-                            new_items_data[row[0]] = dict(zip(cols, row))
-                            
-                    cursor.close()
-                except Exception as e:
-                    import logging
-                    logging.error(f"[DELTA] Failed to fetch missing info: {e}")
-                finally:
-                    if conn_mssql:
-                        conn_mssql.close()
-
-                for (kd_divisi, kd_barang) in missing_keys:
-                    delta_stok = delta_accum[(kd_divisi, kd_barang)]
-                    master = new_items_data.get(kd_barang, {})
+            for (kd_divisi, kd_barang), new_stok in recalc_map.items():
+                if (kd_divisi, kd_barang) in cache_index:
+                    updated_keys.add((kd_divisi, kd_barang))
+                else:
+                    # Item baru — perlu master info
+                    master = master_info.get(kd_barang, {})
                     if not master:
                         continue
                     new_rows.append({
@@ -530,20 +482,15 @@ class SnapshotManager:
                         'model': master.get('model', ''),
                         'warna': master.get('warna', ''),
                         'ukuran': master.get('ukuran', ''),
-                        'stok_akhir': round(delta_stok, 4),
+                        'stok_akhir': new_stok,
                         'harga_jual': float(master.get('harga_jual', 0) or 0),
-                        'harga_beli_akhir': 0.0,
-                        'harga_avg': 0.0,
+                        'harga_beli_akhir': float(master.get('harga_beli', 0) or 0),
+                        'harga_avg': float(master.get('harga_avg', 0) or 0),
                     })
 
-            # ── Step 3: Brief lock to apply all changes to memory ──
-            _t3 = time.time()
-            print(f'[DELTA TIMING] Fetch missing items: {_t3-_t2:.2f}s ({len(missing_keys)} missing)')
-            status['progress'] = 75
-            status['message'] = 'Memperbarui cache...'
+            # ── Apply to memory cache (REPLACE, bukan tambah) ──
             with cls._cache_lock:
                 cache = cls._mem_cache.get(server_key, [])
-                # Re-build index (cache may have been reloaded)
                 cache_index = {}
                 for i, row in enumerate(cache):
                     key = (row.get('kd_divisi', ''), row.get('kd_barang', ''))
@@ -552,13 +499,13 @@ class SnapshotManager:
                 for key in updated_keys:
                     idx = cache_index.get(key)
                     if idx is not None:
-                        cache[idx]['stok_akhir'] = round(cache[idx].get('stok_akhir', 0) + delta_accum[key], 4)
+                        cache[idx]['stok_akhir'] = recalc_map[key]
 
                 cache.extend(new_rows)
                 cls._mem_cache[server_key] = cache
                 cls._mem_cache_ts[server_key] = time.time()
 
-            # Update SQLite
+            # ── Update SQLite ──
             _t4 = time.time()
             print(f'[DELTA TIMING] Memory update: {_t4-_t3:.2f}s')
             status['progress'] = 85
@@ -570,17 +517,14 @@ class SnapshotManager:
                 conn_db = cls._init_db(db_path)
                 batch_update = []
                 for (kd_divisi, kd_barang) in updated_keys:
-                    idx = cache_index.get((kd_divisi, kd_barang))
-                    if idx is not None:
-                        new_stok = cache[idx]['stok_akhir']
-                        batch_update.append((new_stok, kd_divisi, kd_barang))
-                
+                    batch_update.append((recalc_map[(kd_divisi, kd_barang)], kd_divisi, kd_barang))
+
                 if batch_update:
                     conn_db.executemany(
                         'UPDATE stok_snapshot SET stok_akhir = ? WHERE kd_divisi = ? AND kd_barang = ?',
                         batch_update
                     )
-                
+
                 if new_rows:
                     batch_insert = []
                     for row in new_rows:
@@ -630,7 +574,7 @@ class SnapshotManager:
             status['state'] = 'ready'
             status['progress'] = 100
             status['row_count'] = len(delta_rows)
-            status['message'] = f'Quick update selesai! {len(delta_rows)} transaksi, {len(updated_keys)} item diupdate, {len(new_rows)} item baru ditambahkan ({elapsed}s)'
+            status['message'] = f'Quick update selesai! {len(affected_kd_barangs)} item dihitung ulang, {len(new_rows)} item baru ({elapsed}s)'
 
         except Exception as e:
             status['state'] = 'error'
@@ -639,6 +583,127 @@ class SnapshotManager:
             print(f'[DELTA ERROR] {server_key}: {e}')
             import traceback
             traceback.print_exc()
+
+    # ──────────── Targeted Recalculation ────────────
+
+    @classmethod
+    def _targeted_recalculate(cls, server_key, kd_barangs, tanggal, db_manager):
+        """
+        Recalculate stok from scratch for specific items via MSSQL.
+        Returns:
+            recalc_map: dict of (kd_divisi, kd_barang) -> stok_akhir (float)
+            master_info: dict of kd_barang -> {nama, kategori, merk, ...}
+            div_map: dict of kd_divisi -> nama
+        """
+        recalc_map = {}
+        master_info = {}
+        div_map = {}
+
+        if not kd_barangs:
+            return recalc_map, master_info, div_map
+
+        # Load the recalculation SQL template
+        recalc_sql_template = _load_sql('12_targeted_recalc.sql')
+
+        conn = None
+        try:
+            conn = db_manager.create_new_connection(server_key)
+            cursor = conn.cursor()
+
+            # Fetch divisi map
+            cursor.execute("SELECT kd_divisi, nama FROM m_divisi (NOLOCK)")
+            div_map = {row[0]: row[1] for row in cursor.fetchall()}
+
+            # Process in chunks of 200 to stay under SQL Server's 2100 parameter limit
+            # (9 UNION ALL sections × N items + 8 tanggal params = 9N + 8 ≤ 2100)
+            chunk_size = 200
+            for i in range(0, len(kd_barangs), chunk_size):
+                chunk = kd_barangs[i:i + chunk_size]
+                placeholders = ','.join('?' for _ in chunk)
+
+                # Build the recalculation query from template
+                # The template has {placeholders} (appears 9 times) and {tanggal_placeholder}
+                sql = recalc_sql_template.replace('{placeholders}', placeholders)
+                sql = sql.replace('{tanggal_placeholder}', '?')
+
+                # Build params: each UNION ALL section needs its own set of params
+                # Section 1 (stok_awal): chunk only
+                # Sections 2-9 (transactions): tanggal + chunk each
+                params = list(chunk)  # Section 1
+                for _ in range(8):  # Sections 2-9
+                    params.append(tanggal)
+                    params.extend(chunk)
+
+                cursor.execute(sql, params)
+                if cursor.description:
+                    for row in cursor.fetchall():
+                        kd_divisi, kd_barang, stok = row[0], row[1], float(row[2] or 0)
+                        recalc_map[(kd_divisi, kd_barang)] = round(stok, 4)
+
+            # Fetch master info + harga for all affected items
+            for i in range(0, len(kd_barangs), chunk_size):
+                chunk = kd_barangs[i:i + chunk_size]
+                placeholders = ','.join('?' for _ in chunk)
+
+                # Master data
+                sql_master = f"""
+                    SELECT b.kd_barang, b.nama, b.ukuran,
+                           k.nama AS kategori, mk.nama AS merk, mo.nama AS model, w.nama AS warna,
+                           bs.harga_jual
+                    FROM m_barang b (NOLOCK)
+                    LEFT JOIN m_kategori k (NOLOCK) ON b.kd_kategori = k.kd_kategori
+                    LEFT JOIN m_merk mk (NOLOCK) ON b.kd_merk = mk.kd_merk
+                    LEFT JOIN m_model mo (NOLOCK) ON b.kd_model = mo.kd_model
+                    LEFT JOIN m_warna w (NOLOCK) ON b.kd_warna = w.kd_warna
+                    LEFT JOIN m_barang_satuan bs (NOLOCK) ON b.kd_barang = bs.kd_barang AND bs.jumlah = 1
+                    WHERE b.kd_barang IN ({placeholders})
+                """
+                cursor.execute(sql_master, chunk)
+                cols = [d[0] for d in cursor.description]
+                for row in cursor.fetchall():
+                    master_info[row[0]] = dict(zip(cols, row))
+
+                # Harga beli terakhir
+                sql_hb = f"""
+                    SELECT kd_barang, harga_beli FROM (
+                        SELECT d.kd_barang, d.harga_beli,
+                               ROW_NUMBER() OVER (PARTITION BY d.kd_barang ORDER BY t.tanggal DESC) AS rn
+                        FROM t_pembelian_detail d (NOLOCK)
+                        INNER JOIN t_pembelian t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+                        WHERE d.kd_barang IN ({placeholders})
+                    ) ranked WHERE rn = 1
+                """
+                cursor.execute(sql_hb, chunk)
+                for row in cursor.fetchall():
+                    if row[0] in master_info:
+                        master_info[row[0]]['harga_beli'] = float(row[1] or 0)
+
+                # Harga average
+                sql_ha = f"""
+                    SELECT kd_barang,
+                           CASE WHEN SUM(qty) > 0 THEN SUM(qty * harga_beli) / SUM(qty) ELSE 0 END AS harga_avg
+                    FROM t_pembelian_detail (NOLOCK)
+                    WHERE kd_barang IN ({placeholders})
+                    GROUP BY kd_barang
+                """
+                cursor.execute(sql_ha, chunk)
+                for row in cursor.fetchall():
+                    if row[0] in master_info:
+                        master_info[row[0]]['harga_avg'] = round(float(row[1] or 0), 2)
+
+            cursor.close()
+        except Exception as e:
+            logging.error(f"[TARGETED RECALC] Error for {server_key}: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except:
+                    pass
+
+        return recalc_map, master_info, div_map
 
     # ──────────── Parallel Refresh ────────────
 
@@ -1053,21 +1118,23 @@ class SnapshotManager:
     # ──────────── Search ────────────
 
     @classmethod
-    def search(cls, server_key, search_kode=None, search_nama=None, divisi=None, limit=None, offset=None):
+    def search(cls, server_key, search_kode=None, search_nama=None, divisi=None,
+               kategori=None, merk=None, limit=None, offset=None,
+               sort_by=None, sort_order='asc'):
         # Try memory cache first
         with cls._cache_lock:
             has_cache = server_key in cls._mem_cache
         if has_cache:
-            data = cls._filter_memory(server_key, search_kode, search_nama, divisi)
-            return cls._build_result(data, source='memory', limit=limit, offset=offset)
+            data = cls._filter_memory(server_key, search_kode, search_nama, divisi, kategori, merk)
+            return cls._build_result(data, source='memory', limit=limit, offset=offset, sort_by=sort_by, sort_order=sort_order)
 
         # Try loading from SQLite
         db_path = cls._db_path(server_key)
         if os.path.exists(db_path):
             cls._load_to_memory(server_key)
             if server_key in cls._mem_cache:
-                data = cls._filter_memory(server_key, search_kode, search_nama, divisi)
-                return cls._build_result(data, source='sqlite', limit=limit, offset=offset)
+                data = cls._filter_memory(server_key, search_kode, search_nama, divisi, kategori, merk)
+                return cls._build_result(data, source='sqlite', limit=limit, offset=offset, sort_by=sort_by, sort_order=sort_order)
 
         return {
             'status': 'no_snapshot',
@@ -1077,7 +1144,7 @@ class SnapshotManager:
         }
 
     @classmethod
-    def search_opname(cls, server_key, search_kode=None, search_nama=None, divisi=None):
+    def search_opname(cls, server_key, search_kode=None, search_nama=None, divisi=None, **kwargs):
         db_path = cls._db_path(server_key)
         if not os.path.exists(db_path):
             return {
@@ -1086,6 +1153,10 @@ class SnapshotManager:
                 'message': 'Belum ada snapshot. Klik Refresh untuk memuat data.',
             }
             
+        status_filter = kwargs.get('status')
+        sort_by = kwargs.get('sort_by', 'tanggal')
+        sort_order = kwargs.get('sort_order', 'desc')
+
         try:
             conn = sqlite3.connect(db_path)
             conn.row_factory = sqlite3.Row
@@ -1096,17 +1167,25 @@ class SnapshotManager:
             
             if search_kode:
                 query += " AND kd_barang LIKE ?"
-                params.append(f"%{search_kode}%")
+                params.append(f"{search_kode}%")
                 
             if search_nama:
-                query += " AND barang LIKE ?"
-                params.append(f"%{search_nama}%")
+                query += " AND (barang LIKE ? OR barang LIKE ? OR barang LIKE ? OR barang LIKE ?)"
+                params.extend([f"{search_nama}%", f"% {search_nama}%", f"%-{search_nama}%", f"%/{search_nama}%"])
                 
             if divisi:
                 query += " AND divisi = ?"
                 params.append(divisi)
-                
-            query += " ORDER BY tanggal DESC"
+
+            if status_filter:
+                query += " AND status_text = ?"
+                params.append(status_filter)
+
+            # Dynamic sorting
+            allowed_sort = {'tanggal', 'barang', 'divisi', 'qty', 'status_text', 'petugas', 'tanggal_server'}
+            col = sort_by if sort_by in allowed_sort else 'tanggal'
+            direction = 'ASC' if sort_order.lower() == 'asc' else 'DESC'
+            query += f" ORDER BY {col} {direction}"
             
             opname_rows = conn.execute(query, params).fetchall()
             
@@ -1190,23 +1269,40 @@ class SnapshotManager:
             return val == pat
 
     @classmethod
-    def _filter_memory(cls, server_key, search_kode=None, search_nama=None, divisi=None):
+    def _filter_memory(cls, server_key, search_kode=None, search_nama=None, divisi=None,
+                       kategori=None, merk=None):
         data = cls._mem_cache.get(server_key, [])
         filtered = []
 
+        search_kode_lower = (search_kode or '').lower()
+        search_nama_lower = (search_nama or '').lower()
+
         for row in data:
-            # Search filter
-            if search_kode or search_nama:
+            # Smart Search filter
+            if search_kode_lower or search_nama_lower:
                 match = False
-                if search_kode and cls._like_match(row.get('kd_barang', ''), search_kode):
+                if search_kode_lower and (row.get('kd_barang', '') or '').lower().startswith(search_kode_lower):
                     match = True
-                if search_nama and cls._like_match(row.get('barang', ''), search_nama):
-                    match = True
+                if search_nama_lower:
+                    name_val = (row.get('barang', '') or '').lower()
+                    if (name_val.startswith(search_nama_lower) or 
+                        f" {search_nama_lower}" in name_val or 
+                        f"-{search_nama_lower}" in name_val or 
+                        f"/{search_nama_lower}" in name_val):
+                        match = True
                 if not match:
                     continue
 
             # Divisi filter
-            if divisi and row.get('divisi', '').lower() != divisi.lower():
+            if divisi and (row.get('divisi', '') or '').lower() != divisi.lower():
+                continue
+
+            # Kategori filter
+            if kategori and (row.get('kategori', '') or '').lower() != kategori.lower():
+                continue
+
+            # Merk filter
+            if merk and (row.get('merk', '') or '').lower() != merk.lower():
                 continue
 
             filtered.append(row)
@@ -1214,7 +1310,7 @@ class SnapshotManager:
         return filtered
 
     @classmethod
-    def _build_result(cls, data, source='memory', limit=None, offset=None):
+    def _build_result(cls, data, source='memory', limit=None, offset=None, sort_by=None, sort_order='asc'):
         total_items = len(data)
         total_nominal = 0
         total_stok = 0
@@ -1231,6 +1327,18 @@ class SnapshotManager:
             divisi = r.get('divisi')
             if divisi:
                 divisi_set.add(divisi)
+
+        # Dynamic sorting
+        sort_key_map = {
+            'divisi': 'divisi', 'barang': 'barang', 'kd_barang': 'kd_barang',
+            'kategori': 'kategori', 'merk': 'merk', 'stok_akhir': 'stok_akhir',
+            'harga_jual': 'harga_jual', 'harga_avg': 'harga_avg',
+            'harga_beli_akhir': 'harga_beli_akhir', 'ukuran': 'ukuran',
+        }
+        if sort_by and sort_by in sort_key_map:
+            key_field = sort_key_map[sort_by]
+            reverse = sort_order.lower() == 'desc'
+            data.sort(key=lambda r: (r.get(key_field) is None, r.get(key_field, '')), reverse=reverse)
 
         if offset is not None:
             data = data[offset:]
@@ -1520,6 +1628,11 @@ class SnapshotManager:
 
     @classmethod
     def _auto_update_loop(cls, interval):
+        """
+        Auto-update loop: melakukan FULL recalculation stok untuk semua item
+        menggunakan targeted_recalculate (1 round-trip SQL, bukan 10 parallel).
+        Ini memastikan data selalu akurat seperti full refresh.
+        """
         from app.Models.Database import db_manager
         while cls._auto_update_stop_event and not cls._auto_update_stop_event.is_set():
             try:
@@ -1528,52 +1641,114 @@ class SnapshotManager:
                 for server in servers:
                     if cls._auto_update_stop_event and cls._auto_update_stop_event.is_set():
                         break
-                    
+
                     server_key = server['key']
-                    
+
                     # Jangan ganggu jika sedang ada refresh manual / parallel
                     if server_key in cls._refresh_threads and cls._refresh_threads[server_key].is_alive():
                         continue
-                    
+
                     db_path = cls._db_path(server_key)
                     if not os.path.exists(db_path):
-                        continue # Perlu refresh awal secara manual terlebih dahulu
-                        
-                    # Get last_refresh
-                    try:
-                        conn = sqlite3.connect(db_path)
-                        row = conn.execute("SELECT value FROM snapshot_meta WHERE key='last_refresh'").fetchone()
-                        conn.close()
-                        if not row:
-                            continue
-                        last_refresh = row[0]
-                    except Exception:
-                        continue
-                    
+                        continue  # Perlu refresh awal secara manual terlebih dahulu
+
                     old_status = cls._refresh_status.get(server_key)
-                    # Hanya jalankan jika state saat ini ready, error, empty, atau cancelled (sedang idle)
-                    if not old_status or old_status.get('state') in ('ready', 'error', 'empty', 'cancelled'):
-                        cls._refresh_cancel[server_key] = threading.Event()
-                        cls._refresh_status[server_key] = {
-                            'state': 'starting',
-                            'progress': 0,
-                            'message': 'Memulai auto update (sequential)...',
-                            'started_at': time.time(),
-                            'row_count': 0,
-                            'is_delta': True,
-                        }
-                        
-                        try:
-                            # Jalan sequential agar tidak menggunakan banyak pool connection ke DB utama
-                            cls._do_delta_refresh(server_key, tanggal, last_refresh, is_sequential=True)
-                        except Exception as e:
-                            logging.error(f"[AUTO UPDATE] Error updating {server_key}: {e}")
-                            
+                    if old_status and old_status.get('state') in ('starting', 'fetching', 'writing'):
+                        continue
+
+                    cls._refresh_status[server_key] = {
+                        'state': 'fetching',
+                        'progress': 10,
+                        'message': 'Auto recalc: mengambil daftar item...',
+                        'started_at': time.time(),
+                        'row_count': 0,
+                        'is_delta': True,
+                    }
+                    status = cls._refresh_status[server_key]
+
+                    try:
+                        _t0 = time.time()
+
+                        # Ambil semua kd_barang dari snapshot lokal
+                        conn_local = sqlite3.connect(db_path)
+                        all_kd = [r[0] for r in conn_local.execute(
+                            'SELECT DISTINCT kd_barang FROM stok_snapshot'
+                        ).fetchall()]
+                        conn_local.close()
+
+                        if not all_kd:
+                            status['state'] = 'ready'
+                            status['progress'] = 100
+                            status['message'] = 'Tidak ada item untuk diupdate'
+                            continue
+
+                        status['progress'] = 20
+                        status['message'] = f'Auto recalc: menghitung ulang {len(all_kd)} item...'
+
+                        # Hitung ulang stok dari MSSQL untuk SEMUA item
+                        recalc_map, master_info, div_map = cls._targeted_recalculate(
+                            server_key, all_kd, tanggal, db_manager
+                        )
+
+                        if cls._auto_update_stop_event and cls._auto_update_stop_event.is_set():
+                            break
+
+                        status['progress'] = 60
+                        status['message'] = f'Auto recalc: memperbarui {len(recalc_map)} item...'
+
+                        # Update memory cache
+                        with cls._cache_lock:
+                            if server_key not in cls._mem_cache:
+                                cls._load_to_memory(server_key)
+                            cache = cls._mem_cache.get(server_key, [])
+                            cache_index = {}
+                            for idx, row in enumerate(cache):
+                                key = (row.get('kd_divisi', ''), row.get('kd_barang', ''))
+                                cache_index[key] = idx
+
+                            updated_count = 0
+                            for key, new_stok in recalc_map.items():
+                                idx = cache_index.get(key)
+                                if idx is not None and cache[idx].get('stok_akhir') != new_stok:
+                                    cache[idx]['stok_akhir'] = new_stok
+                                    updated_count += 1
+
+                            cls._mem_cache[server_key] = cache
+                            cls._mem_cache_ts[server_key] = time.time()
+
+                        status['progress'] = 80
+                        status['message'] = 'Auto recalc: menyimpan ke snapshot...'
+
+                        # Update SQLite
+                        conn_db = sqlite3.connect(db_path)
+                        batch = [(stok, kd_div, kd_brg) for (kd_div, kd_brg), stok in recalc_map.items()]
+                        conn_db.executemany(
+                            'UPDATE stok_snapshot SET stok_akhir = ? WHERE kd_divisi = ? AND kd_barang = ?',
+                            batch
+                        )
+                        now_str = datetime.now().isoformat()
+                        conn_db.execute("INSERT OR REPLACE INTO snapshot_meta VALUES ('last_refresh', ?)", (now_str,))
+                        conn_db.commit()
+                        conn_db.close()
+
+                        elapsed = round(time.time() - _t0, 1)
+                        status['state'] = 'ready'
+                        status['progress'] = 100
+                        status['row_count'] = len(recalc_map)
+                        status['message'] = f'Auto recalc selesai! {updated_count} item berubah ({elapsed}s)'
+                        logging.info(f"[AUTO UPDATE] {server_key}: {updated_count} items changed ({elapsed}s)")
+
+                    except Exception as e:
+                        status['state'] = 'error'
+                        status['progress'] = 0
+                        status['message'] = f'Auto recalc error: {str(e)}'
+                        logging.error(f"[AUTO UPDATE] Error for {server_key}: {e}")
+
                     # Beri jeda antar server
                     time.sleep(2)
             except Exception as e:
                 logging.error(f"[AUTO UPDATE] Loop error: {e}")
-            
+
             if cls._auto_update_stop_event:
                 cls._auto_update_stop_event.wait(interval)
 
