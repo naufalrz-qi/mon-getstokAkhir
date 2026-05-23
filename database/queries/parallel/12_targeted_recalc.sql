@@ -12,6 +12,7 @@ FROM (
     INNER JOIN m_barang b (NOLOCK) ON bd.kd_barang = b.kd_barang
     INNER JOIN m_kategori k (NOLOCK) ON b.kd_kategori = k.kd_kategori
     WHERE k.status <> 2
+      AND ? IS NULL  -- If base_date is NOT NULL, skip stok_awal from DB (use checkpoint in python)
       AND bd.kd_barang IN ({placeholders})
 
     UNION ALL
@@ -24,7 +25,7 @@ FROM (
     INNER JOIN m_barang b (NOLOCK) ON d.kd_barang = b.kd_barang
     INNER JOIN m_kategori k (NOLOCK) ON b.kd_kategori = k.kd_kategori
     LEFT JOIN m_barang_satuan mbs (NOLOCK) ON d.kd_barang = mbs.kd_barang AND d.kd_satuan = mbs.kd_satuan
-    WHERE t.tanggal > dbo.GetTanggalTerakhirTutupBuku()
+    WHERE t.tanggal > COALESCE(?, dbo.GetTanggalTerakhirTutupBuku())
       AND CAST(t.tanggal AS DATE) <= CAST({tanggal_placeholder} AS DATE)
       AND k.status <> 2
       AND d.kd_barang IN ({placeholders})
@@ -37,7 +38,7 @@ FROM (
     FROM t_pembelian_detail d (NOLOCK)
     INNER JOIN t_pembelian t (NOLOCK) ON d.no_transaksi = t.no_transaksi
     LEFT JOIN m_barang_satuan mbs (NOLOCK) ON d.kd_barang = mbs.kd_barang AND d.kd_satuan = mbs.kd_satuan
-    WHERE t.tanggal > dbo.GetTanggalTerakhirTutupBuku()
+    WHERE t.tanggal > COALESCE(?, dbo.GetTanggalTerakhirTutupBuku())
       AND t.status IN (0, 1)
       AND CAST(t.tanggal AS DATE) <= CAST({tanggal_placeholder} AS DATE)
       AND d.kd_barang IN ({placeholders})
@@ -50,7 +51,7 @@ FROM (
     FROM t_opname_stok d (NOLOCK)
     LEFT JOIN m_barang_satuan mbs (NOLOCK) ON d.kd_barang = mbs.kd_barang AND d.kd_satuan = mbs.kd_satuan
     WHERE d.status = 2
-      AND d.tanggal > dbo.GetTanggalTerakhirTutupBuku()
+      AND d.tanggal > COALESCE(?, dbo.GetTanggalTerakhirTutupBuku())
       AND CAST(d.tanggal AS DATE) <= CAST({tanggal_placeholder} AS DATE)
       AND d.kd_barang IN ({placeholders})
 
@@ -62,7 +63,7 @@ FROM (
     FROM t_opname_stok d (NOLOCK)
     LEFT JOIN m_barang_satuan mbs (NOLOCK) ON d.kd_barang = mbs.kd_barang AND d.kd_satuan = mbs.kd_satuan
     WHERE d.status <> 2
-      AND d.tanggal > dbo.GetTanggalTerakhirTutupBuku()
+      AND d.tanggal > COALESCE(?, dbo.GetTanggalTerakhirTutupBuku())
       AND CAST(d.tanggal AS DATE) <= CAST({tanggal_placeholder} AS DATE)
       AND d.kd_barang IN ({placeholders})
 
@@ -74,7 +75,7 @@ FROM (
     FROM t_mutasi_stok_detail d (NOLOCK)
     INNER JOIN t_mutasi_stok t (NOLOCK) ON d.no_transaksi = t.no_transaksi
     LEFT JOIN m_barang_satuan mbs (NOLOCK) ON d.kd_barang = mbs.kd_barang AND d.kd_satuan = mbs.kd_satuan
-    WHERE t.tanggal > dbo.GetTanggalTerakhirTutupBuku()
+    WHERE t.tanggal > COALESCE(?, dbo.GetTanggalTerakhirTutupBuku())
       AND CAST(t.tanggal AS DATE) <= CAST({tanggal_placeholder} AS DATE)
       AND d.kd_barang IN ({placeholders})
 
@@ -86,7 +87,7 @@ FROM (
     FROM t_mutasi_stok_detail d (NOLOCK)
     INNER JOIN t_mutasi_stok t (NOLOCK) ON d.no_transaksi = t.no_transaksi
     LEFT JOIN m_barang_satuan mbs (NOLOCK) ON d.kd_barang = mbs.kd_barang AND d.kd_satuan = mbs.kd_satuan
-    WHERE t.tanggal > dbo.GetTanggalTerakhirTutupBuku()
+    WHERE t.tanggal > COALESCE(?, dbo.GetTanggalTerakhirTutupBuku())
       AND CAST(t.tanggal AS DATE) <= CAST({tanggal_placeholder} AS DATE)
       AND d.kd_barang IN ({placeholders})
 
@@ -98,7 +99,7 @@ FROM (
     FROM t_penjualan_retur_detail d (NOLOCK)
     INNER JOIN t_penjualan_retur t (NOLOCK) ON d.no_retur = t.no_retur
     LEFT JOIN m_barang_satuan mbs (NOLOCK) ON d.kd_barang = mbs.kd_barang AND d.kd_satuan = mbs.kd_satuan
-    WHERE t.tanggal > dbo.GetTanggalTerakhirTutupBuku()
+    WHERE t.tanggal > COALESCE(?, dbo.GetTanggalTerakhirTutupBuku())
       AND CAST(t.tanggal AS DATE) <= CAST({tanggal_placeholder} AS DATE)
       AND d.kd_barang IN ({placeholders})
 
@@ -110,7 +111,7 @@ FROM (
     FROM t_pembelian_retur_detail d (NOLOCK)
     INNER JOIN t_pembelian_retur t (NOLOCK) ON d.no_retur = t.no_retur
     LEFT JOIN m_barang_satuan mbs (NOLOCK) ON d.kd_barang = mbs.kd_barang AND d.kd_satuan = mbs.kd_satuan
-    WHERE t.tanggal > dbo.GetTanggalTerakhirTutupBuku()
+    WHERE t.tanggal > COALESCE(?, dbo.GetTanggalTerakhirTutupBuku())
       AND CAST(t.tanggal AS DATE) <= CAST({tanggal_placeholder} AS DATE)
       AND d.kd_barang IN ({placeholders})
 ) AS all_txn

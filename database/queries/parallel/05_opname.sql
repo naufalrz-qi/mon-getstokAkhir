@@ -1,12 +1,13 @@
 -- Opname / Penyesuaian Stok
 SET NOCOUNT ON;
 DECLARE @tanggal DATETIME = ?;
+DECLARE @base_date DATETIME = ?;
 
 -- Opname yang menambah stok (status = 2 = approved)
 SELECT kd_divisi, kd_barang, qty AS debet, 0 AS kredit, kd_satuan
 FROM t_opname_stok (NOLOCK)
 WHERE status = 2
-  AND tanggal > dbo.GetTanggalTerakhirTutupBuku()
+  AND tanggal > COALESCE(@base_date, dbo.GetTanggalTerakhirTutupBuku())
   AND CAST(tanggal AS DATE) <= CAST(@tanggal AS DATE)
 
 UNION ALL
@@ -15,5 +16,5 @@ UNION ALL
 SELECT kd_divisi, kd_barang, 0 AS debet, qty AS kredit, kd_satuan
 FROM t_opname_stok (NOLOCK)
 WHERE status <> 2
-  AND tanggal > dbo.GetTanggalTerakhirTutupBuku()
+  AND tanggal > COALESCE(@base_date, dbo.GetTanggalTerakhirTutupBuku())
   AND CAST(tanggal AS DATE) <= CAST(@tanggal AS DATE);
