@@ -1,10 +1,11 @@
 -- Pembelian (debet / stok masuk)
 SET NOCOUNT ON;
 DECLARE @tanggal DATETIME = ?;
+DECLARE @base_date DATETIME = ?;
 
 SELECT t.kd_divisi, d.kd_barang, d.qty AS debet, 0 AS kredit, d.kd_satuan
 FROM t_pembelian_detail d (NOLOCK)
 INNER JOIN t_pembelian t (NOLOCK) ON d.no_transaksi = t.no_transaksi
-WHERE t.tanggal > dbo.GetTanggalTerakhirTutupBuku()
+WHERE t.tanggal > COALESCE(@base_date, dbo.GetTanggalTerakhirTutupBuku())
   AND t.status IN (0, 1)
   AND CAST(t.tanggal AS DATE) <= CAST(@tanggal AS DATE);

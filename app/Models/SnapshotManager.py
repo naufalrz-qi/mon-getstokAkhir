@@ -123,10 +123,69 @@ class SnapshotManager:
             conn.execute('ALTER TABLE satuan_snapshot ADD COLUMN nama_satuan TEXT')
         except sqlite3.OperationalError:
             pass
+
+        # Tabel baru untuk menyimpan Base Data stok per rentang waktu (Local Checkpoint)
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS stok_checkpoints (
+                kd_divisi       TEXT,
+                kd_barang       TEXT,
+                checkpoint_type TEXT,   -- e.g., 'yearly', 'weekly'
+                checkpoint_date TEXT,   -- e.g., '2025-12-31', '2026-W42'
+                stok_akhir      REAL,
+                PRIMARY KEY (kd_divisi, kd_barang, checkpoint_type, checkpoint_date)
+            )
+        ''')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_satuan_kd_barang ON satuan_snapshot(kd_barang)')
 
         conn.commit()
         return conn
+
+    # ──────────── Checkpoint Management ────────────
+
+    @classmethod
+    def get_checkpoints(cls, server_key, checkpoint_type):
+        """Retrieve checkpoints from SQLite. Returns dict: (kd_divisi, kd_barang) -> stok_akhir, checkpoint_date"""
+        db_path = cls._db_path(server_key)
+        if not os.path.exists(db_path):
+            return {}, None
+        
+        conn = sqlite3.connect(db_path)
+        # Get the latest checkpoint_date for this type
+        date_row = conn.execute(
+            'SELECT MAX(checkpoint_date) FROM stok_checkpoints WHERE checkpoint_type = ?', 
+            (checkpoint_type,)
+        ).fetchone()
+        
+        if not date_row or not date_row[0]:
+            conn.close()
+            return {}, None
+            
+        latest_date = date_row[0]
+        rows = conn.execute(
+            'SELECT kd_divisi, kd_barang, stok_akhir FROM stok_checkpoints WHERE checkpoint_type = ? AND checkpoint_date = ?',
+            (checkpoint_type, latest_date)
+        ).fetchall()
+        conn.close()
+        
+        checkpoint_map = {(r[0], r[1]): r[2] for r in rows}
+        return checkpoint_map, latest_date
+
+    @classmethod
+    def save_checkpoints(cls, server_key, checkpoint_type, checkpoint_date, stok_map):
+        """Save a snapshot of stock to SQLite as base data."""
+        db_path = cls._db_path(server_key)
+        conn = sqlite3.connect(db_path)
+        batch = []
+        for (kd_div, kd_brg), stok in stok_map.items():
+            batch.append((kd_div, kd_brg, checkpoint_type, checkpoint_date, stok))
+            
+        conn.executemany('''
+            INSERT OR REPLACE INTO stok_checkpoints 
+            (kd_divisi, kd_barang, checkpoint_type, checkpoint_date, stok_akhir) 
+            VALUES (?, ?, ?, ?, ?)
+        ''', batch)
+        conn.commit()
+        conn.close()
 
     # ──────────── Trigger / Cancel ────────────
 
@@ -167,6 +226,80 @@ class SnapshotManager:
             }
             return {'status': 'cancelled', 'message': 'Refresh dibatalkan'}
         return {'status': 'not_running'}
+
+    @classmethod
+    def trigger_weekly_refresh(cls, server_key, tanggal=None):
+        """Weekly update: calculate delta from the weekly checkpoint."""
+        if server_key in cls._refresh_threads and cls._refresh_threads[server_key].is_alive():
+            return {'status': 'already_running', 'message': 'Refresh sedang berjalan'}
+
+        db_path = cls._db_path(server_key)
+        if not os.path.exists(db_path):
+            return cls.trigger_refresh(server_key, tanggal)  # No base, do full refresh
+
+        if not tanggal:
+            tanggal = datetime.now().strftime('%Y-%m-%d')
+
+        cls._refresh_cancel[server_key] = threading.Event()
+        cls._refresh_status[server_key] = {
+            'state': 'starting',
+            'progress': 0,
+            'message': 'Memulai weekly update...',
+            'started_at': time.time(),
+            'row_count': 0,
+            'is_delta': True,
+        }
+
+        # Retrieve checkpoint to get the base_date (last_refresh)
+        _, base_date = cls.get_checkpoints(server_key, 'weekly')
+        if not base_date:
+            return cls.trigger_refresh(server_key, tanggal)
+
+        t = threading.Thread(
+            target=cls._do_delta_refresh,
+            args=(server_key, tanggal, base_date, False, 'weekly'),
+            daemon=True,
+        )
+        cls._refresh_threads[server_key] = t
+        t.start()
+        return {'status': 'started', 'message': 'Weekly update dimulai'}
+
+    @classmethod
+    def trigger_yearly_refresh(cls, server_key, tanggal=None):
+        """Yearly update: calculate delta from the yearly checkpoint."""
+        if server_key in cls._refresh_threads and cls._refresh_threads[server_key].is_alive():
+            return {'status': 'already_running', 'message': 'Refresh sedang berjalan'}
+
+        db_path = cls._db_path(server_key)
+        if not os.path.exists(db_path):
+            return cls.trigger_refresh(server_key, tanggal)  # No base, do full refresh
+
+        if not tanggal:
+            tanggal = datetime.now().strftime('%Y-%m-%d')
+
+        cls._refresh_cancel[server_key] = threading.Event()
+        cls._refresh_status[server_key] = {
+            'state': 'starting',
+            'progress': 0,
+            'message': 'Memulai yearly update...',
+            'started_at': time.time(),
+            'row_count': 0,
+            'is_delta': True,
+        }
+
+        # Retrieve checkpoint to get the base_date (last_refresh)
+        _, base_date = cls.get_checkpoints(server_key, 'yearly')
+        if not base_date:
+            return cls.trigger_refresh(server_key, tanggal)
+
+        t = threading.Thread(
+            target=cls._do_delta_refresh,
+            args=(server_key, tanggal, base_date, False, 'yearly'),
+            daemon=True,
+        )
+        cls._refresh_threads[server_key] = t
+        t.start()
+        return {'status': 'started', 'message': 'Yearly update dimulai'}
 
     @classmethod
     def trigger_delta_refresh(cls, server_key, tanggal=None):
@@ -213,7 +346,7 @@ class SnapshotManager:
         return {'status': 'started', 'message': 'Quick update dimulai'}
 
     @classmethod
-    def _do_delta_refresh(cls, server_key, tanggal, last_refresh, is_sequential=False):
+    def _do_delta_refresh(cls, server_key, tanggal, last_refresh, is_sequential=False, checkpoint_type=None):
         """
         Background worker for delta refresh:
         1. Fetch only NEW transactions since last_refresh (parallel)
@@ -225,6 +358,11 @@ class SnapshotManager:
         cancel = cls._refresh_cancel.get(server_key)
         status = cls._refresh_status[server_key]
 
+        checkpoint_map = None
+        base_date = None
+        if checkpoint_type:
+            checkpoint_map, base_date = cls.get_checkpoints(server_key, checkpoint_type)
+
         try:
             status['state'] = 'fetching'
             status['progress'] = 10
@@ -232,9 +370,9 @@ class SnapshotManager:
             _t0 = time.time()
 
             last_refresh_dt = datetime.fromisoformat(last_refresh)
-            # Opsi 4: Buffer 30 detik untuk menangkap transaksi yang mungkin terlewat
+            # Opsi 4: Buffer 5 menit untuk menangkap transaksi yang mungkin terlewat
             # karena race condition NOLOCK / mid-commit
-            last_refresh_buffered = last_refresh_dt - timedelta(seconds=30)
+            last_refresh_buffered = last_refresh_dt - timedelta(minutes=5)
 
             # Define delta queries — each runs in its own connection
             delta_queries = {
@@ -442,7 +580,8 @@ class SnapshotManager:
 
             # ── Targeted Recalculation: hitung stok dari NOL untuk item terdampak ──
             recalc_map, master_info, div_map = cls._targeted_recalculate(
-                server_key, affected_kd_barangs, tanggal, db_manager
+                server_key, affected_kd_barangs, tanggal, db_manager,
+                base_date=base_date, checkpoint_map=checkpoint_map
             )
             _t3 = time.time()
             print(f'[DELTA TIMING] Targeted recalc: {_t3-_t2:.2f}s ({len(recalc_map)} results)')
@@ -587,7 +726,7 @@ class SnapshotManager:
     # ──────────── Targeted Recalculation ────────────
 
     @classmethod
-    def _targeted_recalculate(cls, server_key, kd_barangs, tanggal, db_manager):
+    def _targeted_recalculate(cls, server_key, kd_barangs, tanggal, db_manager, base_date=None, checkpoint_map=None):
         """
         Recalculate stok from scratch for specific items via MSSQL.
         Returns:
@@ -615,7 +754,7 @@ class SnapshotManager:
             div_map = {row[0]: row[1] for row in cursor.fetchall()}
 
             # Process in chunks of 200 to stay under SQL Server's 2100 parameter limit
-            # (9 UNION ALL sections × N items + 8 tanggal params = 9N + 8 ≤ 2100)
+            # (9 UNION ALL sections × N items + 9 base_date + 8 tanggal = 9N + 17 ≤ 2100)
             chunk_size = 200
             for i in range(0, len(kd_barangs), chunk_size):
                 chunk = kd_barangs[i:i + chunk_size]
@@ -627,10 +766,12 @@ class SnapshotManager:
                 sql = sql.replace('{tanggal_placeholder}', '?')
 
                 # Build params: each UNION ALL section needs its own set of params
-                # Section 1 (stok_awal): chunk only
-                # Sections 2-9 (transactions): tanggal + chunk each
-                params = list(chunk)  # Section 1
-                for _ in range(8):  # Sections 2-9
+                # Section 1 (stok_awal): base_date + chunk
+                # Sections 2-9 (transactions): base_date + tanggal + chunk each
+                params = [base_date]
+                params.extend(chunk)
+                for _ in range(8):
+                    params.append(base_date)
                     params.append(tanggal)
                     params.extend(chunk)
 
@@ -638,6 +779,10 @@ class SnapshotManager:
                 if cursor.description:
                     for row in cursor.fetchall():
                         kd_divisi, kd_barang, stok = row[0], row[1], float(row[2] or 0)
+                        
+                        if checkpoint_map:
+                            stok += float(checkpoint_map.get((kd_divisi, kd_barang), 0))
+                            
                         recalc_map[(kd_divisi, kd_barang)] = round(stok, 4)
 
             # Fetch master info + harga for all affected items
@@ -730,11 +875,11 @@ class SnapshotManager:
             query_tasks = {
                 'master':     ('01_master.sql',     None),
                 'stok_awal':  ('02_stok_awal.sql',  [tanggal]),
-                'penjualan':  ('03_penjualan.sql',  [tanggal]),
-                'pembelian':  ('04_pembelian.sql',   [tanggal]),
-                'opname':     ('05_opname.sql',      [tanggal]),
-                'mutasi':     ('06_mutasi.sql',      [tanggal]),
-                'retur':      ('07_retur.sql',       [tanggal]),
+                'penjualan':  ('03_penjualan.sql',  [tanggal, None]),
+                'pembelian':  ('04_pembelian.sql',  [tanggal, None]),
+                'opname':     ('05_opname.sql',     [tanggal, None]),
+                'mutasi':     ('06_mutasi.sql',     [tanggal, None]),
+                'retur':      ('07_retur.sql',      [tanggal, None]),
                 'harga_beli': ('08_harga_beli.sql',  None),
                 'harga_avg':  ('10_harga_avg.sql',   None),
                 'opname_detail': ('11_opname_detail.sql', None),
@@ -906,6 +1051,13 @@ class SnapshotManager:
                         conn.close()
                     except:
                         pass
+                        
+            # ── Create Checkpoints (Base Data) ──
+            status['progress'] = 90
+            status['message'] = 'Membuat Checkpoint Base Data...'
+            stok_map = {(r['kd_divisi'], r['kd_barang']): r['stok_akhir'] for r in final_rows}
+            cls.save_checkpoints(server_key, 'yearly', tanggal, stok_map)
+            cls.save_checkpoints(server_key, 'weekly', tanggal, stok_map)
 
             # ── Phase 4: Load into memory ──
             status['progress'] = 95
@@ -1667,76 +1819,21 @@ class SnapshotManager:
                     status = cls._refresh_status[server_key]
 
                     try:
-                        _t0 = time.time()
-
-                        # Ambil semua kd_barang dari snapshot lokal
+                        # Get last_refresh timestamp from metadata
                         conn_local = sqlite3.connect(db_path)
-                        all_kd = [r[0] for r in conn_local.execute(
-                            'SELECT DISTINCT kd_barang FROM stok_snapshot'
-                        ).fetchall()]
+                        row = conn_local.execute("SELECT value FROM snapshot_meta WHERE key='last_refresh'").fetchone()
                         conn_local.close()
-
-                        if not all_kd:
+                        
+                        if not row:
                             status['state'] = 'ready'
                             status['progress'] = 100
-                            status['message'] = 'Tidak ada item untuk diupdate'
+                            status['message'] = 'Belum ada last_refresh, perlu full refresh manual'
                             continue
-
-                        status['progress'] = 20
-                        status['message'] = f'Auto recalc: menghitung ulang {len(all_kd)} item...'
-
-                        # Hitung ulang stok dari MSSQL untuk SEMUA item
-                        recalc_map, master_info, div_map = cls._targeted_recalculate(
-                            server_key, all_kd, tanggal, db_manager
-                        )
-
-                        if cls._auto_update_stop_event and cls._auto_update_stop_event.is_set():
-                            break
-
-                        status['progress'] = 60
-                        status['message'] = f'Auto recalc: memperbarui {len(recalc_map)} item...'
-
-                        # Update memory cache
-                        with cls._cache_lock:
-                            if server_key not in cls._mem_cache:
-                                cls._load_to_memory(server_key)
-                            cache = cls._mem_cache.get(server_key, [])
-                            cache_index = {}
-                            for idx, row in enumerate(cache):
-                                key = (row.get('kd_divisi', ''), row.get('kd_barang', ''))
-                                cache_index[key] = idx
-
-                            updated_count = 0
-                            for key, new_stok in recalc_map.items():
-                                idx = cache_index.get(key)
-                                if idx is not None and cache[idx].get('stok_akhir') != new_stok:
-                                    cache[idx]['stok_akhir'] = new_stok
-                                    updated_count += 1
-
-                            cls._mem_cache[server_key] = cache
-                            cls._mem_cache_ts[server_key] = time.time()
-
-                        status['progress'] = 80
-                        status['message'] = 'Auto recalc: menyimpan ke snapshot...'
-
-                        # Update SQLite
-                        conn_db = sqlite3.connect(db_path)
-                        batch = [(stok, kd_div, kd_brg) for (kd_div, kd_brg), stok in recalc_map.items()]
-                        conn_db.executemany(
-                            'UPDATE stok_snapshot SET stok_akhir = ? WHERE kd_divisi = ? AND kd_barang = ?',
-                            batch
-                        )
-                        now_str = datetime.now().isoformat()
-                        conn_db.execute("INSERT OR REPLACE INTO snapshot_meta VALUES ('last_refresh', ?)", (now_str,))
-                        conn_db.commit()
-                        conn_db.close()
-
-                        elapsed = round(time.time() - _t0, 1)
-                        status['state'] = 'ready'
-                        status['progress'] = 100
-                        status['row_count'] = len(recalc_map)
-                        status['message'] = f'Auto recalc selesai! {updated_count} item berubah ({elapsed}s)'
-                        logging.info(f"[AUTO UPDATE] {server_key}: {updated_count} items changed ({elapsed}s)")
+                            
+                        last_refresh = row[0]
+                        
+                        # Jalankan delta refresh secara sequential (agar tidak terlalu membebani network)
+                        cls._do_delta_refresh(server_key, tanggal, last_refresh, is_sequential=True, checkpoint_type='weekly')
 
                     except Exception as e:
                         status['state'] = 'error'

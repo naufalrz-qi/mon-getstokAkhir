@@ -136,6 +136,36 @@ class StokController:
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
     @staticmethod
+    def trigger_weekly_refresh():
+        """API: Weekly update — fetch transactions from the last 7 days"""
+        try:
+            server_key = session.get('selected_server')
+            if not server_key:
+                return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
+
+            tanggal = request.args.get('tanggal', datetime.now().strftime('%Y-%m-%d'))
+            result = SnapshotManager.trigger_weekly_refresh(server_key, tanggal)
+            return jsonify(result)
+
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def trigger_yearly_refresh():
+        """API: Yearly update"""
+        try:
+            server_key = session.get('selected_server')
+            if not server_key:
+                return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
+
+            tanggal = request.args.get('tanggal', datetime.now().strftime('%Y-%m-%d'))
+            result = SnapshotManager.trigger_yearly_refresh(server_key, tanggal)
+            return jsonify(result)
+
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
     def snapshot_status():
         """API: Get snapshot status for current server"""
         server_key = session.get('selected_server')
@@ -178,6 +208,34 @@ class StokController:
 
             tanggal = request.args.get('tanggal', datetime.now().strftime('%Y-%m-%d'))
             result = SnapshotManager.trigger_delta_refresh(server_key, tanggal)
+            return jsonify(result)
+
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def trigger_weekly_refresh_target(server_key):
+        """API: Weekly update for a specific server"""
+        try:
+            if not server_key:
+                return jsonify({'status': 'error', 'message': 'Server key diperlukan'}), 400
+
+            tanggal = request.args.get('tanggal', datetime.now().strftime('%Y-%m-%d'))
+            result = SnapshotManager.trigger_weekly_refresh(server_key, tanggal)
+            return jsonify(result)
+
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def trigger_yearly_refresh_target(server_key):
+        """API: Yearly update for a specific server"""
+        try:
+            if not server_key:
+                return jsonify({'status': 'error', 'message': 'Server key diperlukan'}), 400
+
+            tanggal = request.args.get('tanggal', datetime.now().strftime('%Y-%m-%d'))
+            result = SnapshotManager.trigger_yearly_refresh(server_key, tanggal)
             return jsonify(result)
 
         except Exception as e:
