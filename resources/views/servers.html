@@ -1,9 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Manage Servers - StokMonitor{% endblock %}
+{% block title %}Manage Servers - Arunika{% endblock %}
+
+{% block extra_css %}
+<style>
+    .server-table { min-width: 800px; }
+    .server-table td, .server-table th { white-space: nowrap; }
+    .server-table td:nth-child(1) { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center fade-up">
-    <div class="col-lg-10">
+<div class="fade-up">
         <!-- Header -->
         <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
             <div>
@@ -23,11 +30,12 @@
         <div class="card">
             <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
+                    <table class="table table-hover align-middle mb-0 server-table">
                         <thead>
                             <tr>
                                 <th>Key</th>
                                 <th>Nama Server</th>
+                                <th>Tipe</th>
                                 <th>Host / IP</th>
                                 <th>Port</th>
                                 <th>Database</th>
@@ -87,6 +95,14 @@
                         <input type="text" class="form-control form-control-sm" id="database" placeholder="Database" value="POS_DB" required>
                     </div>
 
+                    <div class="mb-3">
+                        <label class="form-label">Tipe Server</label>
+                        <select class="form-select form-select-sm" id="serverType" required>
+                            <option value="grosir">Grosir (Margin 0)</option>
+                            <option value="eceran">Eceran (Dengan Margin)</option>
+                        </select>
+                    </div>
+
                     <div>
                         <label class="form-label">Kredensial</label>
                         <div class="row g-2">
@@ -142,16 +158,18 @@
         const keys = Object.keys(servers);
         
         if (keys.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4" style="color:var(--text-muted)">Belum ada server</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4" style="color:var(--text-muted)">Belum ada server</td></tr>';
             return;
         }
 
         keys.forEach(key => {
             const s = servers[key];
             const tr = document.createElement('tr');
+            const typeClass = (s.type === 'eceran') ? 'background:var(--accent-bg);color:var(--accent);border:1px solid rgba(232,114,12,0.2)' : 'background:var(--info-bg);color:var(--info);border:1px solid rgba(45,127,249,0.2)';
             tr.innerHTML = `
                 <td><span class="badge-glass">${key}</span></td>
                 <td style="font-weight:600;color:var(--accent-light)">${s.name}</td>
+                <td><span style="display:inline-block;padding:0.2rem 0.5rem;border-radius:12px;font-size:0.68rem;font-weight:600;text-transform:uppercase;${typeClass}">${s.type || 'grosir'}</span></td>
                 <td><i class="fas fa-globe fa-xs" style="color:var(--text-muted)"></i> ${s.host}</td>
                 <td>${s.port}</td>
                 <td><i class="fas fa-database fa-xs" style="color:var(--text-muted)"></i> ${s.database}</td>
@@ -178,6 +196,7 @@
         document.getElementById('key').value = key;
         document.getElementById('key').readOnly = true;
         document.getElementById('name').value = s.name;
+        document.getElementById('serverType').value = s.type || 'grosir';
         document.getElementById('host').value = s.host;
         document.getElementById('port').value = s.port;
         document.getElementById('database').value = s.database;
@@ -192,6 +211,7 @@
         const key = document.getElementById('key').value.trim();
         const data = {
             key, name: document.getElementById('name').value.trim(),
+            type: document.getElementById('serverType').value,
             host: document.getElementById('host').value.trim(),
             port: document.getElementById('port').value.trim(),
             database: document.getElementById('database').value.trim(),

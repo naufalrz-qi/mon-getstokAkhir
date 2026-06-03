@@ -115,6 +115,33 @@ class DatabaseManager:
         finally:
             cursor.close()
     
+    def execute_update(self, server_key, query, params=None):
+        """
+        Execute INSERT/UPDATE/DELETE yang tidak return result set.
+        Auto-commit setelah execute.
+        
+        Returns:
+            Number of rows affected
+        """
+        conn = self.get_connection(server_key)
+        cursor = conn.cursor()
+        
+        try:
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
+            
+            rows_affected = cursor.rowcount
+            conn.commit()
+            return rows_affected
+            
+        except pyodbc.Error as e:
+            conn.rollback()
+            raise Exception(f"Update error: {str(e)}")
+        finally:
+            cursor.close()
+    
     def execute_multi_query(self, server_key, query, params=None):
         """
         Execute query yang return multiple result sets
@@ -165,7 +192,8 @@ class DatabaseManager:
             servers.append({
                 'key': key,
                 'name': config_s['name'],
-                'host': config_s['host']
+                'host': config_s['host'],
+                'type': config_s.get('type', 'grosir')
             })
         return servers
 

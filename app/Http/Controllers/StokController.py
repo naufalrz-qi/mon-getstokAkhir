@@ -50,6 +50,17 @@ class StokController:
         return render_template('opname.html', tanggal=tanggal)
 
     @staticmethod
+    def update_barang_page():
+        """HTML Page: Update Barang (Harga & Status)"""
+        server_key = session.get('selected_server')
+        if not server_key:
+            return render_template('index.html')
+        servers = db_manager.get_available_servers()
+        server = next((s for s in servers if s['key'] == server_key), None)
+        server_type = server.get('type', 'grosir') if server else 'grosir'
+        return render_template('update_barang.html', server_type=server_type)
+
+    @staticmethod
     def mass_refresh_page():
         """HTML Page: Mass refresh semua server"""
         return render_template('mass_refresh.html')
@@ -400,6 +411,20 @@ class StokController:
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
     @staticmethod
+    def fetch_barang_tanpa_transaksi():
+        """API: Get list of items with initial stock but no transactions"""
+        try:
+            server_key = session.get('selected_server')
+            if not server_key:
+                return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
+
+            stok_filter = request.args.get('stok_filter', 'all')
+            result = SnapshotManager.get_barang_tanpa_transaksi(server_key, stok_filter)
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
     def export_xlsx():
         """API: Export search result as XLSX file"""
         try:
@@ -571,6 +596,255 @@ class StokController:
                 as_attachment=True, 
                 download_name=filename
             )
+
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def export_barang_tanpa_transaksi_xlsx():
+        """API: Export list of items with initial stock but no transactions to XLSX"""
+        try:
+            server_key = session.get('selected_server')
+            if not server_key:
+                return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
+
+            stok_filter = request.args.get('stok_filter', 'all')
+            result = SnapshotManager.get_barang_tanpa_transaksi(server_key, stok_filter)
+            if result['status'] != 'success':
+                return jsonify(result), 400
+
+            data = result['data']
+            
+            # Create workbook
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Barang Tanpa Transaksi"
+
+            # Headers
+            headers = ['Kode Divisi', 'Kode Barang', 'Nama Barang', 'Stok Awal']
+            ws.append(headers)
+
+            # Style headers
+            for cell in ws[1]:
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal='center')
+
+            # Data rows
+            for row in data:
+                ws.append([
+                    row.get('kd_divisi'), 
+                    row.get('kd_barang'), 
+                    row.get('nama_barang'),
+                    row.get('stok_awal')
+                ])
+
+            # Auto-size columns
+            for col in ws.columns:
+                max_length = 0
+                column = col[0].column_letter
+                for cell in col:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = (max_length + 2)
+                ws.column_dimensions[column].width = adjusted_width
+
+            # Save to buffer
+            output = BytesIO()
+            wb.save(output)
+            output.seek(0)
+
+            filename = f"barang_tanpa_transaksi_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            return send_file(
+                output, 
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True, 
+                download_name=filename
+            )
+
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    # ──────────── Update Barang APIs ────────────
+
+    @staticmethod
+    def fetch_barang_data():
+        """API: Fetch data barang + harga + status dari MSSQL (live query)"""
+        try:
+            server_key = session.get('selected_server')
+            if not server_key:
+                return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
+
+            q = request.args.get('q', '').strip()
+            kategori = request.args.get('kategori', '').strip()
+            merk = request.args.get('merk', '').strip()
+            margin = request.args.get('margin', '').strip()
+            status_filter = request.args.get('status', '').strip()
+            last_kd = request.args.get('last_kd', '').strip()
+            limit = int(request.args.get('limit', 20))
+            q_type = request.args.get('q_type', 'kode').strip()
+
+            sql = """
+                SELECT TOP (?) 
+                    b.kd_barang,
+                    b.barang,
+                    b.kategori,
+                    b.merk,
+                    s.harga_jual,
+                    s.margin,
+                    s.kd_satuan,
+                    s.jumlah,
+                    sat.satuan as nama_satuan,
+                    mb.status as status_barang,
+                    md.status as status_divisi,
+                    s.status as status_satuan
+                FROM dbo.v_m_barang b
+                JOIN dbo.m_barang mb ON b.kd_barang = mb.kd_barang
+                JOIN dbo.m_barang_satuan s ON b.kd_barang = s.kd_barang
+                LEFT JOIN dbo.m_barang_divisi md ON b.kd_barang = md.kd_barang
+                LEFT JOIN dbo.v_m_barang_satuan sat ON s.kd_satuan = sat.kd_satuan AND sat.kd_barang = b.kd_barang
+                WHERE 1=1
+            """
+            params = [limit]
+
+            if q:
+                if q_type == 'nama':
+                    sql += " AND b.barang LIKE ?"
+                else: # Default to kode
+                    sql += " AND b.kd_barang LIKE ?"
+                params.append(f'%{q}%')
+            if kategori:
+                sql += " AND b.kategori LIKE ?"
+                params.append(f'%{kategori}%')
+            if merk:
+                sql += " AND b.merk LIKE ?"
+                params.append(f'%{merk}%')
+            if margin:
+                if margin == 'high':
+                    sql += " AND s.margin >= 30"
+                elif margin == 'medium':
+                    sql += " AND s.margin >= 15 AND s.margin < 30"
+                elif margin == 'low':
+                    sql += " AND s.margin < 15"
+            if status_filter:
+                if status_filter == 'nonaktif':
+                    sql += " AND (mb.status = 0 OR md.status = 0 OR s.status = 0)"
+                elif status_filter == 'aktif':
+                    sql += " AND (mb.status = 1 OR md.status = 1 OR s.status = 1)"
+                    
+            if last_kd:
+                sql += " AND b.kd_barang > ?"
+                params.append(last_kd)
+
+            sql += " ORDER BY b.kd_barang"
+
+            rows = db_manager.execute_query(server_key, sql, tuple(params))
+            return jsonify(rows)
+
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def update_barang():
+        """API POST: Update harga jual (+ margin) dan 3 field status barang"""
+        try:
+            server_key = session.get('selected_server')
+            if not server_key:
+                return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
+
+            data = request.get_json() or {}
+            kd_barang = data.get('kd_barang')
+            kd_satuan = data.get('kd_satuan')
+            harga_jual_baru = data.get('harga_jual')
+            
+            # Statuses
+            status_barang = data.get('status_barang')
+            status_divisi = data.get('status_divisi')
+            status_satuan = data.get('status_satuan')
+
+            if not all([kd_barang, kd_satuan, harga_jual_baru is not None, status_barang is not None, status_divisi is not None, status_satuan is not None]):
+                return jsonify({'status': 'error', 'message': 'Missing required fields'}), 400
+
+            try:
+                harga_jual_baru = float(harga_jual_baru)
+                status_barang = int(status_barang)
+                status_divisi = int(status_divisi)
+                status_satuan = int(status_satuan)
+            except ValueError:
+                return jsonify({'status': 'error', 'message': 'Format data tidak valid'}), 400
+
+            # Get server type
+            servers = db_manager.get_available_servers()
+            server = next((s for s in servers if s['key'] == server_key), None)
+            server_type = server.get('type', 'grosir') if server else 'grosir'
+
+            # Get current price and margin
+            sql_check = """
+                SELECT harga_jual, margin
+                FROM dbo.m_barang_satuan
+                WHERE kd_barang = ? AND kd_satuan = ?
+            """
+            result = db_manager.execute_query(server_key, sql_check, (kd_barang, kd_satuan))
+
+            if not result:
+                return jsonify({'status': 'error', 'message': 'Produk tidak ditemukan'}), 404
+
+            row = result[0]
+            harga_jual_lama = float(row['harga_jual'])
+            margin_lama = float(row['margin'] or 0)
+
+            if server_type == 'eceran':
+                # Eceran: Calculate margin from base price
+                if margin_lama > 0:
+                    harga_beli = harga_jual_lama / (1 + margin_lama / 100)
+                else:
+                    harga_beli = harga_jual_lama
+
+                if harga_jual_baru < harga_beli:
+                    return jsonify({
+                        'status': 'error',
+                        'message': f'Harga baru (Rp {harga_jual_baru:,.0f}) tidak boleh lebih rendah dari harga beli (Rp {harga_beli:,.0f})'
+                    }), 400
+
+                margin_baru = ((harga_jual_baru - harga_beli) / harga_beli) * 100 if harga_beli > 0 else 0
+            else:
+                # Grosir: margin selalu 0
+                harga_beli = harga_jual_lama
+                margin_baru = 0
+
+            # 1. Update m_barang
+            db_manager.execute_update(server_key, "UPDATE dbo.m_barang SET status = ? WHERE kd_barang = ?", (status_barang, kd_barang))
+            
+            # 2. Update m_barang_divisi
+            db_manager.execute_update(server_key, "UPDATE dbo.m_barang_divisi SET status = ? WHERE kd_barang = ?", (status_divisi, kd_barang))
+
+            # 3. Update m_barang_satuan (Harga + Status)
+            sql_update_satuan = """
+                UPDATE dbo.m_barang_satuan
+                SET harga_jual = ?, margin = ?, status = ?
+                WHERE kd_barang = ? AND kd_satuan = ?
+            """
+            db_manager.execute_update(server_key, sql_update_satuan, (
+                harga_jual_baru, margin_baru, status_satuan, kd_barang, kd_satuan
+            ))
+
+            return jsonify({
+                'status': 'ok',
+                'message': 'Barang berhasil diupdate',
+                'data': {
+                    'kd_barang': kd_barang,
+                    'kd_satuan': kd_satuan,
+                    'harga_jual': harga_jual_baru,
+                    'margin': margin_baru,
+                    'harga_beli': harga_beli,
+                    'profit': harga_jual_baru - harga_beli,
+                    'status_barang': status_barang,
+                    'status_divisi': status_divisi,
+                    'status_satuan': status_satuan
+                }
+            })
 
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500

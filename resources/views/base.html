@@ -50,7 +50,10 @@
             min-height: 100vh;
             overflow-x: hidden;
             -webkit-font-smoothing: antialiased;
+            display: flex;
+            flex-direction: column;
         }
+        .container-main { flex: 1; }
 
         /* ═══ Navbar ═══ */
         .navbar {
@@ -82,6 +85,7 @@
             font-size: 0.8rem;
         }
 
+        /* ─── Nav category dropdowns ─── */
         .navbar .nav-link {
             color: rgba(255,255,255,0.65) !important;
             font-size: 0.8rem; font-weight: 500;
@@ -94,6 +98,51 @@
         .navbar .nav-link.active {
             color: var(--accent-light) !important;
             border-bottom-color: var(--accent);
+        }
+
+        .navbar .dropdown-menu {
+            background: var(--navbar-bg);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: var(--radius-sm);
+            padding: 0.4rem;
+            min-width: 200px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        .navbar .dropdown-item {
+            color: rgba(255,255,255,0.75);
+            font-size: 0.8rem;
+            font-weight: 500;
+            padding: 0.55rem 0.85rem;
+            border-radius: var(--radius-xs);
+            transition: all 0.12s;
+        }
+        .navbar .dropdown-item:hover,
+        .navbar .dropdown-item:focus {
+            background: rgba(255,255,255,0.08);
+            color: #fff;
+        }
+        .navbar .dropdown-item.active {
+            background: var(--accent-bg);
+            color: var(--accent-light);
+        }
+        .navbar .dropdown-item i {
+            width: 18px;
+            text-align: center;
+            margin-right: 0.4rem;
+            opacity: 0.7;
+        }
+        .navbar .dropdown-divider {
+            border-color: rgba(255,255,255,0.08);
+            margin: 0.25rem 0;
+        }
+        .nav-category-label {
+            color: rgba(255,255,255,0.35);
+            font-size: 0.6rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            padding: 0.5rem 0.85rem 0.2rem;
+            display: block;
         }
 
         .server-badge {
@@ -147,22 +196,22 @@
             --bs-table-bg: transparent;
             --bs-table-hover-bg: var(--bg-hover);
             color: var(--text-primary);
-            font-size: 0.82rem;
+            font-size: 0.875rem;
             margin-bottom: 0;
         }
         .table thead th {
             background: #faf7f4;
             border-bottom: 2px solid var(--border-light);
-            font-weight: 600; font-size: 0.7rem;
+            font-weight: 600; font-size: 0.75rem;
             text-transform: uppercase;
             letter-spacing: 0.06em;
             color: var(--text-secondary);
-            padding: 0.7rem 0.85rem;
+            padding: 0.75rem 1rem;
             white-space: nowrap;
         }
         .table td {
             border-bottom: 1px solid #f3ede7;
-            padding: 0.6rem 0.85rem;
+            padding: 0.7rem 1rem;
             vertical-align: middle;
         }
         .table tbody tr { transition: background 0.1s; }
@@ -173,8 +222,8 @@
             background: var(--accent);
             border: none;
             color: #fff;
-            font-weight: 600; font-size: 0.82rem;
-            padding: 0.55rem 1.25rem;
+            font-weight: 600; font-size: 0.875rem;
+            padding: 0.6rem 1.35rem;
             border-radius: var(--radius-sm);
             box-shadow: 0 2px 6px rgba(232,114,12,0.25);
             transition: all 0.15s;
@@ -190,8 +239,8 @@
             background: var(--bg-card);
             border: 1px solid var(--border-card);
             color: var(--text-primary);
-            font-size: 0.82rem; font-weight: 500;
-            padding: 0.5rem 1rem;
+            font-size: 0.875rem; font-weight: 500;
+            padding: 0.55rem 1.1rem;
             border-radius: var(--radius-sm);
             transition: all 0.15s;
         }
@@ -207,8 +256,8 @@
             border: 1px solid var(--border-card);
             color: var(--text-primary);
             border-radius: var(--radius-sm);
-            font-size: 0.82rem;
-            padding: 0.5rem 0.75rem;
+            font-size: 0.875rem;
+            padding: 0.55rem 0.85rem;
             transition: border-color 0.15s, box-shadow 0.15s;
         }
         .form-control:focus, .form-select:focus {
@@ -219,11 +268,11 @@
         }
         .form-control::placeholder { color: var(--text-muted); }
         .form-label {
-            font-size: 0.72rem; font-weight: 600;
+            font-size: 0.78rem; font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.04em;
             color: var(--text-secondary);
-            margin-bottom: 0.3rem;
+            margin-bottom: 0.35rem;
         }
 
         /* ═══ Badges ═══ */
@@ -231,8 +280,8 @@
             background: var(--accent-bg);
             border: 1px solid rgba(232,114,12,0.15);
             color: var(--accent);
-            font-weight: 500; font-size: 0.68rem;
-            padding: 0.25rem 0.55rem;
+            font-weight: 500; font-size: 0.75rem;
+            padding: 0.3rem 0.65rem;
             border-radius: var(--radius-xs);
         }
 
@@ -242,7 +291,7 @@
             border: 1px solid rgba(232,114,12,0.15);
             border-radius: var(--radius-sm);
             color: var(--text-primary);
-            font-size: 0.82rem;
+            font-size: 0.875rem;
             border-left: 3px solid var(--accent);
         }
         .alert-glass.alert-danger { background: var(--danger-bg); border-color: rgba(227,73,53,0.2); border-left-color: var(--danger); }
@@ -269,7 +318,7 @@
             letter-spacing: -0.02em;
         }
         .stat-label {
-            font-size: 0.68rem; font-weight: 600;
+            font-size: 0.72rem; font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.06em;
             color: var(--text-muted);
@@ -281,6 +330,16 @@
             display: flex; align-items: center; justify-content: center;
             font-size: 1rem;
             margin-bottom: 0.7rem;
+        }
+
+        /* ═══ Search sections ═══ */
+        .search-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border-card);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            box-shadow: var(--shadow-sm);
+            margin-bottom: 1.5rem;
         }
 
         /* ═══ Loading ═══ */
@@ -339,47 +398,133 @@
 
         .navbar-toggler-icon { filter: invert(1); }
 
-        /* ═══ Responsive ═══ */
-        @media (max-width: 768px) {
-            .container-main { padding: 1rem; }
+        /* ═══ Responsive: Desktop ═══ */
+        @media (min-width: 992px) {
+            .navbar .dropdown:hover > .dropdown-menu {
+                display: block;
+                margin-top: 0;
+            }
+        }
+
+        /* ═══ Responsive: Tablet ═══ */
+        @media (max-width: 991px) {
+            .container-main { padding: 1.25rem; }
+            .navbar .container-fluid { padding: 0 1rem; }
+            .navbar-collapse {
+                background: var(--navbar-bg);
+                padding: 0.5rem 0 1rem;
+                border-top: 1px solid rgba(255,255,255,0.08);
+            }
+            .navbar .dropdown-menu {
+                background: rgba(255,255,255,0.04);
+                border: none;
+                box-shadow: none;
+                padding-left: 1rem;
+            }
+            .server-badge { margin: 0.5rem 0; }
+        }
+
+        /* ═══ Responsive: Mobile ═══ */
+        @media (max-width: 767px) {
+            .container-main { padding: 0.85rem; }
             .stat-value { font-size: 1.25rem; }
             .navbar-brand { font-size: 0.95rem; }
             .table-responsive { font-size: 0.78rem; }
+            .search-section { padding: 1rem; }
+            .glass-card { border-radius: var(--radius-sm); }
+            .btn { font-size: 0.8rem; }
+            .modal-dialog { margin: 0.5rem; }
         }
-        @media (max-width: 576px) {
-            .stat-card { padding: 0.85rem; }
-            .stat-value { font-size: 1.1rem; }
-            .stat-icon { width: 32px; height: 32px; font-size: 0.85rem; }
+
+        /* ═══ Responsive: Small Mobile (<400px) ═══ */
+        @media (max-width: 399px) {
+            .container-main { padding: 0.5rem; }
+            .stat-card { padding: 0.75rem; }
+            .stat-value { font-size: 1rem; }
+            .stat-icon { width: 28px; height: 28px; font-size: 0.75rem; }
+            .stat-label { font-size: 0.6rem; }
+            .navbar-brand { font-size: 0.85rem; }
+            .navbar-brand .brand-icon { width: 26px; height: 26px; font-size: 0.7rem; }
+            .table { font-size: 0.72rem; }
+            .table thead th { padding: 0.45rem 0.5rem; font-size: 0.6rem; }
+            .table td { padding: 0.4rem 0.5rem; }
+            .form-control, .form-select { font-size: 0.78rem; padding: 0.4rem 0.6rem; }
+            .form-label { font-size: 0.65rem; }
+            .btn { padding: 0.45rem 0.75rem; font-size: 0.75rem; }
+            .btn-accent { padding: 0.5rem 1rem; }
+            .search-section { padding: 0.75rem; }
+            .glass-card { border-radius: var(--radius-xs); }
+            .card-header { padding: 0.6rem 0.85rem; font-size: 0.78rem; }
+            h3 { font-size: 1.15rem !important; }
+            h5 { font-size: 1rem !important; }
+            .modal-dialog { margin: 0.25rem; }
+            .modal-content { border-radius: var(--radius-sm); }
+            .modal-body { padding: 0.85rem; }
+            .footer { font-size: 0.65rem; padding: 0.85rem 0; margin-top: 2rem; }
         }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
 <body>
+    {% set nav_hidden = self.hide_nav()|trim if self.hide_nav is defined else '' %}
+    {% if not nav_hidden %}
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg sticky-top">
         <div class="container-fluid">
             <a class="navbar-brand" href="/">
                 <span class="brand-icon"><i class="fas fa-cube"></i></span>
-                StokMonitor
+                Arunika
             </a>
             <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto gap-0">
-                    <li class="nav-item"><a class="nav-link" href="/stok/"><i class="fas fa-chart-line fa-sm"></i> Dashboard</a></li>
-                    <li class="nav-item"><a class="nav-link" href="/stok/opname"><i class="fas fa-clipboard-check fa-sm"></i> Opname</a></li>
-                    <li class="nav-item"><a class="nav-link" href="/stok/histori"><i class="fas fa-history fa-sm"></i> Histori</a></li>
-                    {% if session.get('role') == 'super_admin' %}
-                    <li class="nav-item"><a class="nav-link" href="/stok/index"><i class="fas fa-server fa-sm"></i> Servers</a></li>
-                    <li class="nav-item"><a class="nav-link" href="/stok/servers"><i class="fas fa-sliders-h fa-sm"></i> Settings</a></li>
-                    <li class="nav-item"><a class="nav-link" href="/auth/users"><i class="fas fa-users-cog fa-sm"></i> Users</a></li>
-                    {% endif %}
-                    <li class="nav-item"><a class="nav-link" href="/stok/mass-refresh"><i class="fas fa-sync fa-sm"></i> Mass Refresh</a></li>
-                    {% if session.get('username') %}
-                    <li class="nav-item"><a class="nav-link" href="/auth/change-password"><i class="fas fa-key fa-sm"></i> Password</a></li>
-                    <li class="nav-item"><a class="nav-link" href="/auth/logout" style="color:var(--danger) !important"><i class="fas fa-sign-out-alt fa-sm"></i> Logout</a></li>
-                    {% endif %}
+                    <!-- Kategori: Stok -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-boxes fa-sm"></i> Stok
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="/stok/"><i class="fas fa-chart-line"></i> Dashboard Monitor</a></li>
+                            <li><a class="dropdown-item" href="/stok/histori"><i class="fas fa-history"></i> Histori Barang</a></li>
+                            <li><a class="dropdown-item" href="/stok/opname"><i class="fas fa-clipboard-check"></i> Opname Stok</a></li>
+                        </ul>
+                    </li>
+
+                    <!-- Kategori: Data Master -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-database fa-sm"></i> Data Master
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="/master/update-barang"><i class="fas fa-tags"></i> Update Barang</a></li>
+                        </ul>
+                    </li>
+
+                    <!-- Kategori: Lainnya -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-ellipsis-h fa-sm"></i> Lainnya
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="/stok/index"><i class="fas fa-server"></i> Pilih Server</a></li>
+                            {% if session.get('role') in ['admin', 'super_admin'] %}
+                            <li><a class="dropdown-item" href="/stok/mass-refresh"><i class="fas fa-sync"></i> Mass Refresh</a></li>
+                            {% endif %}
+                            {% if session.get('role') == 'super_admin' %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li><span class="nav-category-label">Administrasi</span></li>
+                            <li><a class="dropdown-item" href="/stok/servers"><i class="fas fa-sliders-h"></i> Kelola Server</a></li>
+                            <li><a class="dropdown-item" href="/auth/users"><i class="fas fa-users-cog"></i> Kelola User</a></li>
+                            {% endif %}
+                            {% if session.get('username') %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="/auth/change-password"><i class="fas fa-key"></i> Ganti Password</a></li>
+                            <li><a class="dropdown-item" href="/auth/logout" style="color:var(--danger)"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+                            {% endif %}
+                        </ul>
+                    </li>
                 </ul>
                 <span id="current-server-badge" class="server-badge ms-3">
                     <span class="pulse"></span>
@@ -388,16 +533,19 @@
             </div>
         </div>
     </nav>
+    {% endif %}
 
     <div class="container-main">
         {% block content %}{% endblock %}
     </div>
 
+    {% if not nav_hidden %}
     <footer class="footer">
         <div class="container-fluid">
-            <p class="mb-0">StokMonitor &copy; 2024 &middot; Optimized Query Engine &middot; MVCR Architecture</p>
+            <p class="mb-0">Arunika &copy; 2024 &middot; Optimized Query Engine &middot; MVCR Architecture</p>
         </div>
     </footer>
+    {% endif %}
 
     <!-- Login Modal -->
     <div class="modal fade" id="globalLoginModal" tabindex="-1" aria-hidden="true">
@@ -459,9 +607,21 @@
             fetch('/stok/get-current-server').then(r => r.json()).then(data => {
                 const el = document.getElementById('server-name');
                 el.textContent = (data.status === 'success' && data.server) ? data.server.name : 'Belum dipilih';
-            });
+            }).catch(() => {});
         }
         document.addEventListener('DOMContentLoaded', updateServerBadge);
+
+        // Active nav highlighting
+        document.addEventListener('DOMContentLoaded', function() {
+            const path = window.location.pathname;
+            document.querySelectorAll('.navbar .dropdown-item').forEach(item => {
+                if (item.getAttribute('href') === path) {
+                    item.classList.add('active');
+                    const parentToggle = item.closest('.dropdown')?.querySelector('.nav-link');
+                    if (parentToggle) parentToggle.classList.add('active');
+                }
+            });
+        });
     </script>
     {% block extra_js %}{% endblock %}
 </body>

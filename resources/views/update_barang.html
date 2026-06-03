@@ -1,0 +1,647 @@
+{% extends "base.html" %}
+{% block title %}Update Barang - Arunika{% endblock %}
+
+{% block extra_css %}
+<style>
+    .page-header { margin-bottom: 1.5rem; }
+    .page-header h3 { font-weight: 800; letter-spacing: -0.03em; margin-bottom: 0.25rem; }
+    .page-header p { color: var(--text-muted); font-size: 0.85rem; margin: 0; }
+
+    .server-type-badge {
+        display: inline-flex; align-items: center; gap: 0.35rem;
+        padding: 0.3rem 0.75rem; border-radius: 20px;
+        font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .server-type-badge.grosir { background: var(--info-bg); color: var(--info); border: 1px solid rgba(45,127,249,0.2); }
+    .server-type-badge.eceran { background: var(--accent-bg); color: var(--accent); border: 1px solid rgba(232,114,12,0.2); }
+
+    /* Stats */
+    .harga-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.25rem; }
+
+    /* Cards Grid */
+    .harga-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .harga-cards.list-view { grid-template-columns: 1fr; }
+
+    .harga-card {
+        background: var(--bg-card); border: 1px solid var(--border-card); border-radius: var(--radius);
+        padding: 1.25rem; transition: all 0.25s cubic-bezier(0.4,0,0.2,1); position: relative; overflow: hidden;
+        animation: cardSlideUp 0.4s ease forwards; opacity: 0;
+    }
+    @keyframes cardSlideUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+    .harga-card:hover { box-shadow: var(--shadow-md); transform: translateY(-4px); border-color: #d6cdc3; }
+    .harga-card::before {
+        content:''; position:absolute; top:0; left:0; right:0; height:3px;
+        background: linear-gradient(90deg, var(--accent), var(--accent-light));
+        transform: scaleX(0); transition: transform 0.25s;
+    }
+    .harga-card:hover::before { transform: scaleX(1); }
+    .harga-card.edit-mode { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(232,114,12,0.12); }
+    .harga-card.inactive { opacity: 0.8; filter: grayscale(40%); }
+    .harga-card.inactive:hover { opacity: 1; filter: none; }
+
+    .harga-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.6rem; }
+    .harga-card-code {
+        font-size: 0.68rem; font-weight: 700; color: var(--accent);
+        background: var(--accent-bg); padding: 0.2rem 0.6rem; border-radius: var(--radius-xs); letter-spacing: 0.04em;
+    }
+    
+    .status-badges { display: flex; flex-direction: row; gap: 0.25rem; align-items: center; }
+    .status-badge {
+        display: inline-flex; align-items: center; gap: 0.25rem;
+        padding: 0.2rem 0.4rem; border-radius: var(--radius-xs);
+        font-size: 0.6rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em;
+    }
+    .status-badge.s1 { background: var(--success-bg); color: var(--success); }
+    .status-badge.s0 { background: var(--danger-bg); color: var(--danger); }
+    .status-badge.s2 { background: var(--warning-bg); color: var(--warning); }
+    .status-badge .icon-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; background: currentColor; }
+
+    .harga-card-title { font-weight: 700; font-size: 0.95rem; margin: 0.4rem 0 0.3rem; color: var(--text-primary); line-height: 1.35; }
+    .harga-card-meta { display: flex; gap: 0.75rem; font-size: 0.72rem; color: var(--text-muted); margin-bottom: 0.75rem; }
+
+    .harga-card-price {
+        font-size: 1.6rem; font-weight: 800; margin: 0.5rem 0;
+        color: var(--accent); letter-spacing: -0.02em;
+    }
+    .harga-card-price .satuan-label { font-size: 0.8rem; color: var(--text-muted); font-weight: 500; }
+
+    .margin-badge {
+        display: inline-flex; align-items: center; gap: 0.3rem;
+        padding: 0.25rem 0.6rem; border-radius: var(--radius-xs);
+        font-size: 0.72rem; font-weight: 600; margin-bottom: 0.5rem;
+    }
+    .margin-badge.high { background: var(--success-bg); color: var(--success); }
+    .margin-badge.medium { background: var(--warning-bg); color: var(--warning); }
+    .margin-badge.low { background: var(--danger-bg); color: var(--danger); }
+
+    .harga-card-info {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;
+        margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-light);
+    }
+    .info-item-label { font-size: 0.62rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
+    .info-item-value { font-size: 0.8rem; font-weight: 600; color: var(--text-primary); }
+
+    /* Edit */
+    .edit-input-wrapper { display: none; }
+    .edit-input-wrapper.show { display: block; }
+    .edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem; }
+    .edit-grid.grosir-mode { grid-template-columns: 1fr; }
+    
+    .status-edit-grid { display: grid; grid-template-columns: 1fr; gap: 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px dashed var(--border-light); }
+    .status-edit-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+    .status-edit-row label { margin: 0; font-size: 0.7rem; color: var(--text-secondary); width: 80px; }
+    .status-edit-row select { flex: 1; font-size: 0.75rem; padding: 0.3rem 0.5rem; }
+
+    .edit-preview {
+        margin-top: 0.75rem; padding: 0.75rem; background: var(--accent-bg);
+        border-radius: var(--radius-sm); border: 1px solid rgba(232,114,12,0.15);
+    }
+    .edit-preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.78rem; }
+    .preview-label { font-size: 0.6rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; }
+    .preview-value { font-weight: 700; color: var(--text-primary); }
+
+    .edit-actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+    .edit-actions button { flex:1; padding:0.5rem; border:none; border-radius:var(--radius-sm); font-weight:600; cursor:pointer; transition:all 0.15s; font-size:0.78rem; }
+    .btn-edit { background:var(--accent-bg); color:var(--accent); border:1px solid rgba(232,114,12,0.2) !important; }
+    .btn-edit:hover { background:var(--accent); color:#fff; }
+    .btn-save { background:var(--success); color:#fff; }
+    .btn-save:hover { background:#1a8f5a; }
+    .btn-cancel { background:var(--danger-bg); color:var(--danger); border:1px solid rgba(227,73,53,0.2) !important; }
+    .btn-cancel:hover { background:var(--danger); color:#fff; }
+
+    /* Load more */
+    .load-more-btn {
+        display: block; margin: 1.5rem auto; padding: 0.65rem 2rem;
+        border: 1px solid var(--border-card); background: var(--bg-card); color: var(--text-primary);
+        border-radius: var(--radius-sm); font-weight: 600; font-size: 0.82rem; cursor: pointer; transition: all 0.15s;
+    }
+    .load-more-btn:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-2px); }
+    .load-more-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    /* Skeleton */
+    .skeleton-card {
+        height: 250px; border-radius: var(--radius); background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-hover) 50%, var(--bg-card) 75%);
+        background-size: 200% 100%; animation: shimmer 1.5s infinite;
+    }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+    .empty-state { text-align: center; padding: 4rem 1.5rem; color: var(--text-muted); }
+    .empty-state-icon { font-size: 3rem; margin-bottom: 0.75rem; opacity: 0.5; }
+
+    /* Notification toast */
+    .toast-notification {
+        position: fixed; top: 80px; right: 24px; padding: 1rem 1.5rem; border-radius: var(--radius-sm);
+        font-weight: 600; font-size: 0.82rem; z-index: 1060; animation: toastIn 0.3s ease; white-space: pre-line; max-width: 360px;
+        box-shadow: var(--shadow-lg);
+    }
+    .toast-notification.success { background: var(--success); color: #fff; }
+    .toast-notification.error { background: var(--danger); color: #fff; }
+    @keyframes toastIn { from{transform:translateX(400px);opacity:0} to{transform:translateX(0);opacity:1} }
+    @keyframes toastOut { from{transform:translateX(0);opacity:1} to{transform:translateX(400px);opacity:0} }
+
+    /* View toggle */
+    .view-toggle { display: flex; gap: 4px; background: var(--bg-hover); padding: 3px; border-radius: var(--radius-xs); }
+    .view-toggle button {
+        padding: 0.35rem 0.65rem; border: none; background: transparent; color: var(--text-muted);
+        border-radius: 5px; cursor: pointer; transition: all 0.15s; font-size: 0.75rem;
+    }
+    .view-toggle button.active { background: var(--accent); color: #fff; }
+
+    @media (max-width: 767px) {
+        .harga-cards { grid-template-columns: 1fr; }
+        .harga-stats { grid-template-columns: repeat(2, 1fr); }
+        .harga-card-price { font-size: 1.3rem; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header fade-up">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+            <h3>
+                <i class="fas fa-boxes" style="color:var(--accent)"></i> Update Barang
+                <span class="server-type-badge {{ server_type }}" id="serverTypeBadge">
+                    <i class="fas fa-{{ 'warehouse' if server_type == 'grosir' else 'store' }}"></i>
+                    {{ server_type|upper }}
+                </span>
+            </h3>
+            <p>Kelola harga jual, margin, dan status aktif barang (Barang, Divisi, Satuan)</p>
+        </div>
+        <a href="/stok/index" class="btn btn-glass btn-sm">
+            <i class="fas fa-exchange-alt fa-sm"></i> Ganti Server
+        </a>
+    </div>
+</div>
+
+<!-- Stats -->
+<div class="harga-stats fade-up" style="animation-delay:0.05s">
+    <div class="stat-card">
+        <div class="stat-icon" style="background:var(--accent-bg);color:var(--accent)"><i class="fas fa-box"></i></div>
+        <div>
+            <div class="stat-value" id="statTotal">-</div>
+            <div class="stat-label">Total Produk</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon" style="background:var(--success-bg);color:var(--success)"><i class="fas fa-money-bill-wave"></i></div>
+        <div>
+            <div class="stat-value" id="statValue">-</div>
+            <div class="stat-label">Total Nilai</div>
+        </div>
+    </div>
+    <div class="stat-card eceran-only" {% if server_type == 'grosir' %}style="display:none"{% endif %}>
+        <div class="stat-icon" style="background:var(--warning-bg);color:var(--warning)"><i class="fas fa-chart-bar"></i></div>
+        <div>
+            <div class="stat-value" id="statMargin">-</div>
+            <div class="stat-label">Rata-rata Margin</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon" style="background:var(--info-bg);color:var(--info)"><i class="fas fa-tags"></i></div>
+        <div>
+            <div class="stat-value" id="statKategori">-</div>
+            <div class="stat-label">Kategori</div>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="search-section fade-up" style="animation-delay:0.1s">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-2 col-12">
+            <label class="form-label">Cari Berdasarkan</label>
+            <select id="filterType" class="form-select">
+                <option value="kode">Kode Barang</option>
+                <option value="nama">Nama Barang</option>
+            </select>
+        </div>
+        <div class="col-md-4 col-12">
+            <label class="form-label"><i class="fas fa-search fa-xs"></i> Kata Kunci</label>
+            <input id="filterQ" class="form-control" placeholder="Ketik lalu tekan Enter..." autocomplete="off">
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label"><i class="fas fa-filter fa-xs"></i> Status</label>
+            <select id="filterStatus" class="form-select">
+                <option value="">Semua Status</option>
+                <option value="aktif">Aktif</option>
+                <option value="nonaktif">Non Aktif</option>
+            </select>
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label"><i class="fas fa-tag fa-xs"></i> Kategori</label>
+            <input id="filterKategori" class="form-control" placeholder="Kategori..." autocomplete="off">
+        </div>
+        <div class="col-6 col-md-2 eceran-only" {% if server_type == 'grosir' %}style="display:none"{% endif %}>
+            <label class="form-label"><i class="fas fa-chart-line fa-xs"></i> Margin</label>
+            <select id="filterMargin" class="form-select">
+                <option value="">Semua</option>
+                <option value="high">Tinggi (≥30%)</option>
+                <option value="medium">Sedang (15-30%)</option>
+                <option value="low">Rendah (<15%)</option>
+            </select>
+        </div>
+        <div class="col-12 col-md-3 d-flex gap-2 align-items-end">
+            <button class="btn btn-accent flex-grow-1" onclick="loadData(true)">
+                <i class="fas fa-search fa-sm"></i> Cari
+            </button>
+            <div class="view-toggle">
+                <button class="active" onclick="toggleView('grid', this)"><i class="fas fa-th"></i></button>
+                <button onclick="toggleView('list', this)"><i class="fas fa-list"></i></button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Cards container -->
+<div id="cardsContainer" class="harga-cards"></div>
+<button class="load-more-btn" id="loadMoreBtn" onclick="loadData()" style="display:none">Muat Lebih Banyak</button>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const SERVER_TYPE = '{{ server_type }}';
+const IS_ECERAN = SERVER_TYPE === 'eceran';
+const cardsEl = document.getElementById('cardsContainer');
+const loadMoreBtn = document.getElementById('loadMoreBtn');
+let lastKd = null;
+let currentView = 'grid';
+let allData = [];
+const LIMIT = 20;
+
+function fmt(n) {
+    const v = Math.round(Number(n));
+    return 'Rp' + v.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+function getStatusText(type, val) {
+    if (val == 0) return 'Non Aktif';
+    if (val == 1) return 'Aktif';
+    if (type === 'divisi') return 'Aktif Non Penjualan';
+    return 'Aktif Non Display';
+}
+
+function showSkeleton(count = 6) {
+    for (let i = 0; i < count; i++) {
+        const sk = document.createElement('div');
+        sk.className = 'skeleton-card';
+        sk.style.animationDelay = `${i * 0.1}s`;
+        cardsEl.appendChild(sk);
+    }
+}
+
+function updateStats() {
+    if (!allData.length) return;
+    const total = allData.length;
+    const totalVal = allData.reduce((s, i) => s + Number(i.harga_jual || 0), 0);
+    const avgMargin = allData.reduce((s, i) => s + Number(i.margin || 0), 0) / total;
+    const cats = new Set(allData.map(i => i.kategori)).size;
+
+    document.getElementById('statTotal').textContent = total.toLocaleString('id-ID');
+    document.getElementById('statValue').textContent = fmt(totalVal);
+    document.getElementById('statMargin').textContent = avgMargin.toFixed(1) + '%';
+    document.getElementById('statKategori').textContent = cats;
+}
+
+async function loadData(reset = false) {
+    if (reset) { lastKd = null; allData = []; cardsEl.innerHTML = ''; }
+    loadMoreBtn.disabled = true;
+    loadMoreBtn.textContent = 'Memuat...';
+    showSkeleton();
+
+    const params = new URLSearchParams({
+        q: document.getElementById('filterQ').value,
+        q_type: document.getElementById('filterType').value,
+        status: document.getElementById('filterStatus').value,
+        kategori: document.getElementById('filterKategori').value,
+        limit: LIMIT
+    });
+    if (lastKd) params.append('last_kd', lastKd);
+    const marginVal = document.getElementById('filterMargin')?.value;
+    if (marginVal) params.append('margin', marginVal);
+
+    try {
+        const res = await fetch('/master/api/barang?' + params);
+        const data = await res.json();
+        cardsEl.querySelectorAll('.skeleton-card').forEach(s => s.remove());
+
+        if (data.length === 0) {
+            if (reset) cardsEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon"><i class="fas fa-inbox"></i></div><h5>Tidak ada data ditemukan</h5><p style="font-size:0.82rem">Coba ubah filter pencarian Anda</p></div>';
+            loadMoreBtn.style.display = 'none';
+            return;
+        }
+        allData.push(...data);
+        data.forEach((item, i) => setTimeout(() => renderCard(item), i * 30));
+        lastKd = data[data.length - 1]?.kd_barang || lastKd;
+        updateStats();
+        loadMoreBtn.disabled = false;
+        loadMoreBtn.textContent = 'Muat Lebih Banyak';
+        loadMoreBtn.style.display = data.length < LIMIT ? 'none' : 'block';
+    } catch (err) {
+        cardsEl.querySelectorAll('.skeleton-card').forEach(s => s.remove());
+        cardsEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon"><i class="fas fa-exclamation-triangle"></i></div><h5>Gagal memuat data</h5><p style="font-size:0.82rem">' + err.message + '</p></div>';
+    }
+}
+
+function renderCard(item) {
+    const card = document.createElement('div');
+    card.className = 'harga-card';
+    if (item.status_barang == 0 || item.status_divisi == 0 || item.status_satuan == 0) {
+        card.classList.add('inactive');
+    }
+    
+    card.dataset.kdBarang = item.kd_barang;
+    card.dataset.kdSatuan = item.kd_satuan;
+
+    const hj = Number(item.harga_jual || 0);
+    const margin = Number(item.margin || 0);
+    const hBase = margin > 0 ? hj / (1 + margin / 100) : hj;
+
+    card.dataset.currentHargaJual = hj;
+    card.dataset.currentMargin = margin;
+    card.dataset.hargaBase = hBase;
+    
+    // Status datasets
+    card.dataset.statusB = item.status_barang ?? 1;
+    card.dataset.statusD = item.status_divisi ?? 1;
+    card.dataset.statusS = item.status_satuan ?? 1;
+
+    let mClass = 'low', mIcon = '<i class="fas fa-arrow-down fa-xs"></i>';
+    if (margin >= 30) { mClass = 'high'; mIcon = '<i class="fas fa-arrow-up fa-xs"></i>'; }
+    else if (margin >= 15) { mClass = 'medium'; mIcon = '<i class="fas fa-minus fa-xs"></i>'; }
+
+    const marginBadgeHTML = IS_ECERAN ? `<div class="margin-badge ${mClass}" data-margin="${margin}">${mIcon} <span class="margin-value">${margin.toFixed(1)}</span>%</div>` : '';
+
+    const marginEditHTML = IS_ECERAN ? `
+        <div>
+            <label class="form-label" style="font-size:0.65rem;margin-bottom:0.25rem"><i class="fas fa-chart-line fa-xs"></i> MARGIN (%)</label>
+            <input type="number" class="form-control margin-input" value="${margin.toFixed(1)}" min="0" max="1000" step="0.1">
+        </div>` : '';
+
+    const previewHTML = IS_ECERAN ? `
+        <div class="edit-preview">
+            <div class="preview-label" style="margin-bottom:0.4rem"><i class="fas fa-calculator fa-xs"></i> PREVIEW</div>
+            <div class="edit-preview-grid">
+                <div><div class="preview-label">Harga Base (0%)</div><div class="preview-value">${fmt(hBase)}</div></div>
+                <div><div class="preview-label">Profit</div><div class="preview-value preview-profit" style="color:var(--success)">${fmt(hj - hBase)}</div></div>
+            </div>
+        </div>` : '';
+
+    const infoBaseHTML = IS_ECERAN ? `
+        <div class="info-item"><span class="info-item-label">Harga Base</span><span class="info-item-value" style="color:var(--text-muted)">${fmt(hBase)}</span></div>` : '';
+
+    card.innerHTML = `
+        <div class="harga-card-header">
+            <span class="harga-card-code">${item.kd_barang}</span>
+            <div class="status-badges">
+                <span class="status-badge s${card.dataset.statusB}" title="Status Master"><span class="icon-dot"></span> B: ${getStatusText('barang', card.dataset.statusB)}</span>
+                <span class="status-badge s${card.dataset.statusD}" title="Status Divisi"><span class="icon-dot"></span> D: ${getStatusText('divisi', card.dataset.statusD)}</span>
+                <span class="status-badge s${card.dataset.statusS}" title="Status Satuan"><span class="icon-dot"></span> S: ${getStatusText('satuan', card.dataset.statusS)}</span>
+            </div>
+        </div>
+        <div class="harga-card-title">${item.barang}</div>
+        <div class="harga-card-meta">
+            <span><i class="fas fa-tag fa-xs"></i> ${item.kategori || '-'}</span>
+            <span><i class="fas fa-star fa-xs"></i> ${item.merk || '-'}</span>
+        </div>
+        ${marginBadgeHTML}
+        
+        <div class="harga-card-price-wrap">
+            <div class="harga-card-price" data-price="${hj}">
+                <span class="price-value">${fmt(hj)}</span>
+                ${item.nama_satuan ? `<span class="satuan-label">/ ${item.nama_satuan}</span>` : ''}
+            </div>
+            
+            <div class="edit-input-wrapper">
+                <div class="edit-grid ${IS_ECERAN ? '' : 'grosir-mode'}">
+                    <div>
+                        <label class="form-label" style="font-size:0.65rem;margin-bottom:0.25rem"><i class="fas fa-money-bill fa-xs"></i> HARGA JUAL</label>
+                        <input type="number" class="form-control price-input" value="${Math.round(hj)}" min="0" step="1000">
+                    </div>
+                    ${marginEditHTML}
+                </div>
+                
+                <div class="status-edit-grid">
+                    <div class="status-edit-row">
+                        <label>Status Barang</label>
+                        <select class="form-select sel-status-b">
+                            <option value="1">1 - Aktif</option>
+                            <option value="0">0 - Non Aktif</option>
+                            <option value="2">2 - Aktif Non Display</option>
+                        </select>
+                    </div>
+                    <div class="status-edit-row">
+                        <label>Status Divisi</label>
+                        <select class="form-select sel-status-d">
+                            <option value="1">1 - Aktif</option>
+                            <option value="0">0 - Non Aktif</option>
+                            <option value="2">2 - Aktif Non Penjualan</option>
+                        </select>
+                    </div>
+                    <div class="status-edit-row">
+                        <label>Status Satuan</label>
+                        <select class="form-select sel-status-s">
+                            <option value="1">1 - Aktif</option>
+                            <option value="0">0 - Non Aktif</option>
+                            <option value="2">2 - Aktif Non Display</option>
+                        </select>
+                    </div>
+                </div>
+                ${previewHTML}
+            </div>
+        </div>
+        
+        <div class="harga-card-info">
+            <div class="info-item"><span class="info-item-label">Satuan</span><span class="info-item-value">${item.nama_satuan || '-'}</span></div>
+            <div class="info-item"><span class="info-item-label">Jumlah/Satuan</span><span class="info-item-value">${item.jumlah || '-'}</span></div>
+            <div class="info-item"><span class="info-item-label">Kode Satuan</span><span class="info-item-value">${item.kd_satuan || '-'}</span></div>
+            ${infoBaseHTML}
+        </div>
+        <div class="edit-actions">
+            <button class="btn-edit" onclick="toggleEdit(this, true)"><i class="fas fa-edit fa-sm"></i> Edit Barang</button>
+        </div>
+    `;
+    cardsEl.appendChild(card);
+}
+
+/* ── Edit Toggle ── */
+function toggleEdit(btn, isEdit) {
+    const card = btn.closest('.harga-card');
+    const priceDisplay = card.querySelector('.harga-card-price');
+    const wrapper = card.querySelector('.edit-input-wrapper');
+    const actions = card.querySelector('.edit-actions');
+
+    if (isEdit) {
+        card.classList.add('edit-mode');
+        priceDisplay.style.display = 'none';
+        wrapper.classList.add('show');
+        
+        card.querySelector('.price-input').value = Math.round(parseFloat(card.dataset.currentHargaJual));
+        const mi = card.querySelector('.margin-input');
+        if (mi) mi.value = parseFloat(card.dataset.currentMargin).toFixed(1);
+        
+        card.querySelector('.sel-status-b').value = card.dataset.statusB;
+        card.querySelector('.sel-status-d').value = card.dataset.statusD;
+        card.querySelector('.sel-status-s').value = card.dataset.statusS;
+
+        // Listeners
+        card.querySelector('.price-input').oninput = () => updateMarginFromPrice(card);
+        if (mi) mi.oninput = () => updatePriceFromMargin(card);
+
+        actions.innerHTML = `
+            <button class="btn-save" onclick="saveBarang(this)"><i class="fas fa-save fa-sm"></i> Simpan</button>
+            <button class="btn-cancel" onclick="cancelEdit(this)"><i class="fas fa-times fa-sm"></i> Batal</button>
+        `;
+    } else {
+        card.classList.remove('edit-mode');
+        priceDisplay.style.display = 'block';
+        wrapper.classList.remove('show');
+        actions.innerHTML = `<button class="btn-edit" onclick="toggleEdit(this, true)"><i class="fas fa-edit fa-sm"></i> Edit Barang</button>`;
+    }
+}
+
+function cancelEdit(btn) {
+    const card = btn.closest('.harga-card');
+    if (IS_ECERAN) updatePreview(card, parseFloat(card.dataset.currentHargaJual), parseFloat(card.dataset.currentMargin));
+    toggleEdit(btn, false);
+}
+
+/* ── Sync margin ↔ price ── */
+function updateMarginFromPrice(card) {
+    const pi = card.querySelector('.price-input');
+    const mi = card.querySelector('.margin-input');
+    const hBase = parseFloat(card.dataset.hargaBase);
+    const newP = parseFloat(pi.value) || 0;
+    if (newP <= 0 || hBase <= 0) return;
+    if (mi) {
+        const newM = ((newP - hBase) / hBase) * 100;
+        mi.value = newM.toFixed(1);
+        updatePreview(card, newP, newM);
+    }
+}
+
+function updatePriceFromMargin(card) {
+    const pi = card.querySelector('.price-input');
+    const mi = card.querySelector('.margin-input');
+    const hBase = parseFloat(card.dataset.hargaBase);
+    let newM = parseFloat(mi.value); if (isNaN(newM)) newM = 0;
+    if (hBase <= 0) return;
+    const newP = hBase * (1 + newM / 100);
+    pi.value = Math.round(newP);
+    updatePreview(card, Math.round(newP), newM);
+}
+
+function updatePreview(card, hj, margin) {
+    const hBase = parseFloat(card.dataset.hargaBase);
+    const profit = hj - hBase;
+    const pp = card.querySelector('.preview-profit');
+    if (pp) {
+        pp.textContent = fmt(profit);
+        pp.style.color = profit > 0 ? 'var(--success)' : profit === 0 ? 'var(--warning)' : 'var(--danger)';
+    }
+}
+
+/* ── Save ── */
+async function saveBarang(btn) {
+    const card = btn.closest('.harga-card');
+    const newHJ = parseFloat(card.querySelector('.price-input').value);
+    
+    const sb = card.querySelector('.sel-status-b').value;
+    const sd = card.querySelector('.sel-status-d').value;
+    const ss = card.querySelector('.sel-status-s').value;
+
+    if (newHJ <= 0 || isNaN(newHJ)) { showToast('Harga harus lebih besar dari 0!', 'error'); return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin fa-sm"></i> Menyimpan...';
+
+    try {
+        const payload = {
+            kd_barang: card.dataset.kdBarang,
+            kd_satuan: card.dataset.kdSatuan,
+            harga_jual: newHJ,
+            status_barang: sb,
+            status_divisi: sd,
+            status_satuan: ss
+        };
+        
+        const res = await fetch('/master/api/barang/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const result = await res.json();
+
+        if (res.ok && result.status === 'ok') {
+            const serverM = result.data.margin || 0;
+            const newBase = serverM > 0 ? newHJ / (1 + serverM / 100) : newHJ;
+            
+            card.dataset.currentHargaJual = newHJ;
+            card.dataset.currentMargin = serverM;
+            card.dataset.hargaBase = newBase;
+            card.dataset.statusB = sb;
+            card.dataset.statusD = sd;
+            card.dataset.statusS = ss;
+
+            // Update UI elements
+            const pv = card.querySelector('.price-value');
+            if (pv) pv.textContent = fmt(newHJ);
+            
+            // Re-render badges
+            const bHtml = `
+                <span class="status-badge s${sb}" title="Status Master"><span class="icon-dot"></span> B: ${getStatusText('barang', sb)}</span>
+                <span class="status-badge s${sd}" title="Status Divisi"><span class="icon-dot"></span> D: ${getStatusText('divisi', sd)}</span>
+                <span class="status-badge s${ss}" title="Status Satuan"><span class="icon-dot"></span> S: ${getStatusText('satuan', ss)}</span>
+            `;
+            card.querySelector('.status-badges').innerHTML = bHtml;
+            
+            if (sb == 0 || sd == 0 || ss == 0) {
+                card.classList.add('inactive');
+            } else {
+                card.classList.remove('inactive');
+            }
+
+            // Exit edit
+            toggleEdit(btn, false);
+
+            const profit = newHJ - newBase;
+            showToast(`✅ Barang berhasil diupdate!\n💰 Harga: ${fmt(newHJ)}\n🔄 Status Diubah`, 'success');
+            updateStats();
+        } else {
+            throw new Error(result.message || 'Gagal mengupdate barang');
+        }
+    } catch (err) {
+        showToast('❌ ' + err.message, 'error');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save fa-sm"></i> Simpan';
+    }
+}
+
+function showToast(msg, type) {
+    const el = document.createElement('div');
+    el.className = `toast-notification ${type}`;
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => { el.style.animation = 'toastOut 0.3s ease'; setTimeout(() => el.remove(), 300); }, 3500);
+}
+
+function toggleView(view, btn) {
+    currentView = view;
+    cardsEl.className = view === 'list' ? 'harga-cards list-view' : 'harga-cards';
+    document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+}
+
+// Key bindings
+['filterQ', 'filterKategori', 'filterMerk'].forEach(id => {
+    document.getElementById(id)?.addEventListener('keypress', e => { if (e.key === 'Enter') loadData(true); });
+});
+['filterMargin', 'filterStatus', 'filterType'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', () => loadData(true));
+});
+
+// Init
+document.addEventListener('DOMContentLoaded', () => loadData(true));
+</script>
+{% endblock %}

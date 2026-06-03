@@ -1603,6 +1603,94 @@ class SnapshotManager:
         }
 
     @classmethod
+    def get_barang_tanpa_transaksi(cls, server_key, stok_filter='all'):
+        """
+        Fetch items that have no transactions after the last book closing date.
+        stok_filter options: 'gt_zero' (> 0), 'gte_zero' (>= 0), 'all' (no filter)
+        """
+        from app.Models.Database import db_manager
+        
+        stok_condition = ""
+        if stok_filter == 'gt_zero':
+            stok_condition = "AND bd.stok_awal > 0"
+        elif stok_filter == 'gte_zero':
+            stok_condition = "AND bd.stok_awal >= 0"
+
+        query = f"""
+        DECLARE @TglTutupBuku DATETIME = dbo.GetTanggalTerakhirTutupBuku();
+        
+        WITH cte_transaksi AS (
+            -- 2. Mutasi Keluar
+            SELECT t.kd_divisi_asal AS kd_divisi, d.kd_barang
+            FROM t_mutasi_stok_detail d (NOLOCK)
+            INNER JOIN t_mutasi_stok t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+            WHERE t.tanggal > @TglTutupBuku
+            
+            UNION ALL 
+            -- 3. Mutasi Masuk
+            SELECT t.kd_divisi_tujuan AS kd_divisi, d.kd_barang
+            FROM t_mutasi_stok_detail d (NOLOCK)
+            INNER JOIN t_mutasi_stok t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+            WHERE t.tanggal > @TglTutupBuku
+            
+            UNION ALL
+            -- 4 & 5. Opname
+            SELECT kd_divisi, kd_barang
+            FROM t_opname_stok (NOLOCK)
+            WHERE tanggal > @TglTutupBuku
+            
+            UNION ALL
+            -- 6. Pembelian
+            SELECT t.kd_divisi, d.kd_barang
+            FROM t_pembelian_detail d (NOLOCK)
+            INNER JOIN t_pembelian t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+            WHERE t.tanggal > @TglTutupBuku AND t.status IN (0, 1)
+            
+            UNION ALL
+            -- 7. Retur Pembelian
+            SELECT t.kd_divisi, d.kd_barang
+            FROM t_pembelian_retur_detail d (NOLOCK)
+            INNER JOIN t_pembelian_retur t (NOLOCK) ON d.no_retur = t.no_retur
+            WHERE t.tanggal > @TglTutupBuku
+            
+            UNION ALL
+            -- 8. Penjualan
+            SELECT t.kd_divisi, d.kd_barang
+            FROM t_penjualan_detail d (NOLOCK)
+            INNER JOIN t_penjualan t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+            INNER JOIN m_barang b (NOLOCK) ON d.kd_barang = b.kd_barang
+            INNER JOIN m_kategori k (NOLOCK) ON b.kd_kategori = k.kd_kategori
+            WHERE t.tanggal > @TglTutupBuku AND k.status <> 2
+            
+            UNION ALL
+            -- 9. Retur Penjualan
+            SELECT t.kd_divisi, d.kd_barang
+            FROM t_penjualan_retur_detail d (NOLOCK)
+            INNER JOIN t_penjualan_retur t (NOLOCK) ON d.no_retur = t.no_retur
+            WHERE t.tanggal > @TglTutupBuku
+        )
+        SELECT 
+            bd.kd_divisi,
+            bd.kd_barang,
+            b.nama AS nama_barang,
+            bd.stok_awal
+        FROM m_barang_divisi bd (NOLOCK)
+        INNER JOIN m_barang b (NOLOCK) ON bd.kd_barang = b.kd_barang
+        WHERE NOT EXISTS (
+            SELECT 1 FROM cte_transaksi ct 
+            WHERE ct.kd_barang = bd.kd_barang AND ct.kd_divisi = bd.kd_divisi
+        )
+        {stok_condition}
+        ORDER BY bd.kd_divisi, bd.kd_barang;
+        """
+        
+        try:
+            results = db_manager.execute_query(server_key, query)
+            return {'status': 'success', 'data': results}
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    @classmethod
     def get_barang_histori(cls, server_key, kd_barang, kd_divisi, start_date=None, end_date=None):
         """
         Fetch transaction history for ONE item (optional division) from MSSQL.
