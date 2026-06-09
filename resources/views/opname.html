@@ -12,7 +12,7 @@
     display: flex; align-items: center; gap: 0.5rem;
     transition: border-color 0.2s; box-shadow: var(--shadow-sm);
 }
-.pos-search-bar:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(232,114,12,0.1); }
+.pos-search-bar:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(220,38,38,0.1); }
 .pos-search-bar .search-icon {
     width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
     background: var(--accent); border-radius: var(--radius-sm); color: #fff; font-size: 1rem; flex-shrink: 0;
@@ -39,7 +39,7 @@
 @keyframes slideIn { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: translateX(0); } }
 .detail-header { padding: 1.25rem; border-bottom: 1px solid var(--border-light); background: var(--bg-hover); }
 .detail-header .item-title { font-size: 1.1rem; font-weight: 700; color: var(--text-primary); }
-.detail-section { padding: 1rem 1.25rem; border-bottom: 1px solid #f3ede7; }
+.detail-section { padding: 1rem 1.25rem; border-bottom: 1px solid var(--table-row-border); }
 .detail-section:last-child { border-bottom: none; }
 .detail-section-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-secondary); margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.4rem; }
 .divisi-stok-row { display: flex; align-items: center; justify-content: space-between; padding: 0.55rem 0.75rem; border-radius: var(--radius-sm); margin-bottom: 4px; background: var(--bg-hover); transition: background 0.15s; }
@@ -111,7 +111,7 @@
         <div class="item-list glass-card p-2" id="item-list-container">
             <div id="item-list-welcome" class="text-center py-4" style="color:var(--text-muted)">
                 <i class="fas fa-search" style="font-size:1.5rem;opacity:0.3"></i>
-                <p class="mt-2 mb-0" style="font-size:0.8rem">Ketik nama/kode barang lalu tekan <kbd style="background:var(--bg-glass);border:1px solid var(--border-glass);padding:0.1rem 0.3rem;border-radius:3px;font-size:0.7rem">Enter</kbd></p>
+                <p class="mt-2 mb-0" style="font-size:0.8rem">Ketik nama/kode barang lalu tekan <kbd>Enter</kbd></p>
             </div>
             <div id="item-list-body" style="display:none"></div>
             <div id="item-list-empty" style="display:none" class="text-center py-4">

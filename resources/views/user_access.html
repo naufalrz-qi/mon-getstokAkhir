@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+{% block title %}Kelola Akses Menu - Arunika{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 fade-up">
+    <div>
+        <h3 style="font-weight:800;letter-spacing:-0.03em;margin-bottom:0.25rem">
+            <i class="fas fa-user-lock" style="color:var(--accent)"></i> Kelola Akses Menu
+        </h3>
+        <p style="color:var(--text-muted);font-size:0.85rem;margin:0">Atur hak akses menu untuk masing-masing admin</p>
+    </div>
+</div>
+
+<div class="row fade-up" style="animation-delay:0.1s">
+    <div class="col-12">
+        <div class="glass-card p-0">
+            <div class="table-responsive">
+                <table class="table mb-0">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Username</th>
+                            <th>Role</th>
+                            <th class="text-center">Total Akses</th>
+                            <th class="text-end">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTbody">
+                        <tr><td colspan="5" class="text-center py-4"><i class="fas fa-spinner fa-spin"></i> Memuat data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Atur Akses -->
+<div class="modal fade" id="accessModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold"><i class="fas fa-shield-alt" style="color:var(--accent)"></i> Atur Akses: <span id="accessUsernameTitle"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form id="formAccess">
+                    <input type="hidden" id="accessUsername">
+                    <div id="accessAlert"></div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <h6 class="fw-bold mb-2 text-secondary" style="font-size:0.85rem">Akses Menu</h6>
+                            <label class="form-check-label d-block mb-2">
+                                <input class="form-check-input menu-checkbox" type="checkbox" value="stok_index">
+                                <i class="fas fa-chart-line ms-1"></i> Dashboard Monitor
+                            </label>
+                            <label class="form-check-label d-block mb-2">
+                                <input class="form-check-input menu-checkbox" type="checkbox" value="stok_histori">
+                                <i class="fas fa-history ms-1"></i> Histori Barang
+                            </label>
+                            <label class="form-check-label d-block mb-2">
+                                <input class="form-check-input menu-checkbox" type="checkbox" value="stok_opname">
+                                <i class="fas fa-clipboard-check ms-1"></i> Opname Stok
+                            </label>
+                            <label class="form-check-label d-block mb-2">
+                                <input class="form-check-input menu-checkbox" type="checkbox" value="master_update">
+                                <i class="fas fa-tags ms-1"></i> Update Barang (Harga)
+                            </label>
+                            <label class="form-check-label d-block mb-2">
+                                <input class="form-check-input menu-checkbox" type="checkbox" value="mass_refresh">
+                                <i class="fas fa-sync ms-1"></i> Mass Refresh
+                            </label>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <h6 class="fw-bold mb-2 text-secondary" style="font-size:0.85rem">Akses Server</h6>
+                            <div id="serverCheckboxesContainer">
+                                <div class="text-muted" style="font-size:0.8rem"><i class="fas fa-spinner fa-spin"></i> Memuat server...</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-accent w-100" id="btnSaveAccess">Simpan Akses</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let accessModalInstance = null;
+    let usersData = [];
+    let availableServers = [];
+
+    document.addEventListener('DOMContentLoaded', () => {
+        accessModalInstance = new bootstrap.Modal(document.getElementById('accessModal'));
+        loadServers();
+        loadUsers();
+    });
+    
+    function loadServers() {
+        fetch('/stok/server-list')
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    availableServers = data.servers;
+                    const container = document.getElementById('serverCheckboxesContainer');
+                    container.innerHTML = '';
+                    if (availableServers.length === 0) {
+                        container.innerHTML = '<div class="text-muted" style="font-size:0.8rem">Belum ada server.</div>';
+                        return;
+                    }
+                    availableServers.forEach(server => {
+                        const label = document.createElement('label');
+                        label.className = 'form-check-label d-block mb-2';
+                        label.innerHTML = `
+                            <input class="form-check-input server-checkbox" type="checkbox" value="${server.key}">
+                            <i class="fas fa-server ms-1"></i> ${server.name}
+                        `;
+                        container.appendChild(label);
+                    });
+                }
+            });
+    }
+
+    function loadUsers() {
+        fetch('/api/users')
+            .then(res => res.json())
+            .then(data => {
+                const tbody = document.getElementById('usersTbody');
+                if(data.status === 'success') {
+                    usersData = data.data;
+                    tbody.innerHTML = '';
+                    if(data.data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-3">Tidak ada data</td></tr>';
+                        return;
+                    }
+                    data.data.forEach(user => {
+                        const tr = document.createElement('tr');
+                        const roleBadge = user.role === 'super_admin' ? 
+                            '<span class="badge-glass" style="color:var(--danger)"><i class="fas fa-crown"></i> Super Admin</span>' : 
+                            '<span class="badge-glass" style="color:var(--success)"><i class="fas fa-user-shield"></i> Admin</span>';
+                            
+                        // Super admin bypasses menu checks usually, but we can display 'All'
+                        const totalAccess = user.role === 'super_admin' ? 'Semua Akses' : `${user.menus ? user.menus.length : 0} Menu, ${user.servers ? user.servers.length : 0} Server`;
+                        
+                        const actionBtn = user.role === 'super_admin' ? 
+                            '<span class="text-muted" style="font-size:0.8rem">Bypass</span>' : 
+                            `<button class="btn btn-glass btn-sm" onclick="openAccessModal('${user.username}')"><i class="fas fa-edit"></i> Atur</button>`;
+                        
+                        tr.innerHTML = `
+                            <td>${user.id}</td>
+                            <td style="font-weight:600">${user.username}</td>
+                            <td>${roleBadge}</td>
+                            <td class="text-center">
+                                <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);border:1px solid var(--border-light)">${totalAccess}</span>
+                            </td>
+                            <td class="text-end">${actionBtn}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
+            });
+    }
+
+    function openAccessModal(username) {
+        const user = usersData.find(u => u.username === username);
+        if(!user) return;
+        
+        document.getElementById('accessUsernameTitle').textContent = username;
+        document.getElementById('accessUsername').value = username;
+        document.getElementById('accessAlert').innerHTML = '';
+        
+        const checkboxes = document.querySelectorAll('.menu-checkbox');
+        checkboxes.forEach(cb => {
+            cb.checked = (user.menus || []).includes(cb.value);
+        });
+        
+        const serverCheckboxes = document.querySelectorAll('.server-checkbox');
+        serverCheckboxes.forEach(cb => {
+            cb.checked = (user.servers || []).includes(cb.value);
+        });
+        
+        accessModalInstance.show();
+    }
+
+    document.getElementById('formAccess').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('btnSaveAccess');
+        const alertBox = document.getElementById('accessAlert');
+        const username = document.getElementById('accessUsername').value;
+        
+        const checkboxes = document.querySelectorAll('.menu-checkbox');
+        const selectedMenus = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
+        
+        const serverCheckboxes = document.querySelectorAll('.server-checkbox');
+        const selectedServers = Array.from(serverCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
+        
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menyimpan...';
+        
+        fetch('/api/users/access', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                username: username,
+                menus: selectedMenus,
+                servers: selectedServers
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if(data.status === 'success') {
+                alertBox.innerHTML = `<div class="alert alert-success py-2 px-3 mb-3" style="font-size:0.8rem">${data.message}</div>`;
+                loadUsers();
+                setTimeout(() => {
+                    accessModalInstance.hide();
+                }, 1000);
+            } else {
+                alertBox.innerHTML = `<div class="alert alert-danger py-2 px-3 mb-3" style="font-size:0.8rem">${data.message}</div>`;
+            }
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = 'Simpan Akses';
+        });
+    });
+</script>
+{% endblock %}

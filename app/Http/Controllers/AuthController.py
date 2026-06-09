@@ -40,6 +40,8 @@ class AuthController:
         if user and AuthController._verify_password(password, user['password_hash']):
             session['username'] = user['username']
             session['role'] = user['role']
+            session['menus'] = user.get('menus', [])
+            session['servers'] = user.get('servers', [])
             session['is_admin'] = True # backward comp
             session.permanent = True  # Mengikuti PERMANENT_SESSION_LIFETIME di config
             if request.is_json:
@@ -162,6 +164,23 @@ class AuthController:
     @staticmethod
     def api_delete_user(username):
         success, msg = UserModel.delete(username)
+        if success:
+            return jsonify({'status': 'success', 'message': msg})
+        return jsonify({'status': 'error', 'message': msg}), 400
+
+    @staticmethod
+    def user_access_page():
+        """HTML Page: Kelola Akses Menu"""
+        return render_template('user_access.html')
+
+    @staticmethod
+    def api_update_user_access():
+        """API/POST Handler: Update user menus and servers"""
+        data = request.get_json()
+        if not data or not data.get('username') or 'menus' not in data or 'servers' not in data:
+            return jsonify({'status': 'error', 'message': 'Data tidak lengkap'}), 400
+            
+        success, msg = UserModel.update_access(data['username'], data['menus'], data['servers'])
         if success:
             return jsonify({'status': 'success', 'message': msg})
         return jsonify({'status': 'error', 'message': msg}), 400

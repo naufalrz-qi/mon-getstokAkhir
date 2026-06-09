@@ -74,6 +74,9 @@ def register_routes(app):
     Route.get('/api/users', superadmin(AuthController.api_get_users))
     Route.post('/api/users', superadmin(AuthController.api_create_user))
     Route.delete('/api/users/<username>', superadmin(AuthController.api_delete_user))
+    
+    Route.get('/auth/access', superadmin(AuthController.user_access_page))
+    Route.post('/api/users/access', superadmin(AuthController.api_update_user_access))
 
     # ==========================================================
     # API Routes : Server Session — butuh login
@@ -108,8 +111,10 @@ def register_routes(app):
     Route.get('/stok/api/item-stock/<kd_barang>', login(StokController.fetch_item_stock_detail))
     Route.get('/stok/barang-histori', login(StokController.fetch_barang_histori))
     Route.get('/stok/barang-tanpa-transaksi', login(StokController.fetch_barang_tanpa_transaksi))
+    Route.get('/stok/semua-barang-stok-awal', login(StokController.fetch_semua_barang_stok_awal))
     Route.get('/stok/export/histori', login(StokController.export_histori_xlsx))
     Route.get('/stok/export/barang-tanpa-transaksi', login(StokController.export_barang_tanpa_transaksi_xlsx))
+    Route.get('/stok/export/semua-barang-stok-awal', login(StokController.export_semua_barang_stok_awal_xlsx))
     Route.get('/stok/export/xlsx', login(StokController.export_xlsx))
     Route.get('/stok/low-stock-alert', login(StokController.fetch_low_stock_alert))
 

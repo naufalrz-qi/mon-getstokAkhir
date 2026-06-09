@@ -41,7 +41,7 @@
                     <span class="badge-glass" id="snapshot-badge" style="font-size:0.65rem">Checking...</span>
                 </div>
                 <div id="snapshot-progress-wrap" style="display:none">
-                    <div style="background:#f5f0eb;border-radius:6px;height:6px;overflow:hidden;margin-bottom:4px">
+                    <div style="background:var(--bg-secondary);border-radius:6px;height:6px;overflow:hidden;margin-bottom:4px">
                         <div id="snapshot-progress-bar" style="height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-light));border-radius:6px;width:0%;transition:width 0.3s ease"></div>
                     </div>
                 </div>
@@ -61,8 +61,8 @@
         <div class="col-md-2 col-12">
             <label class="form-label">Cari Berdasarkan</label>
             <select id="filter-type" class="form-select form-select-sm">
-                <option value="nama">Nama Barang</option>
                 <option value="kode">Kode Barang</option>
+                <option value="nama">Nama Barang</option>
             </select>
         </div>
         <div class="col-md-6 col-12">
@@ -80,7 +80,7 @@
                 <span class="badge-glass" id="search-source" style="display:none"><i class="fas fa-memory fa-xs"></i> <span id="source-text">memory</span></span>
             </div>
             <span style="font-size:0.75rem;color:var(--text-muted)">
-                <i class="fas fa-lightbulb fa-xs text-warning"></i> Auto-search on <kbd style="background:#f5f0eb;border:1px solid var(--border-card);padding:0.1rem 0.3rem;border-radius:3px">Enter</kbd>
+                <i class="fas fa-lightbulb fa-xs text-warning"></i> Auto-search on <kbd>Enter</kbd>
             </span>
         </div>
     </div>
@@ -135,7 +135,7 @@
     </div>
     <h5 style="font-weight:700;margin-bottom:0.5rem">Mulai Pencarian</h5>
     <p style="color:var(--text-muted);font-size:0.85rem;max-width:400px;margin:0 auto" id="welcome-text">
-        Ketik nama atau kode barang, lalu tekan <kbd style="background:#f5f0eb;border:1px solid var(--border-card);padding:0.1rem 0.4rem;border-radius:4px;font-size:0.75rem">Enter</kbd>
+        Ketik nama atau kode barang, lalu tekan <kbd>Enter</kbd>
     </p>
 </div>
 
@@ -181,7 +181,7 @@
                 <i class="fas fa-file-excel fa-xs"></i> Export
             </button>
             <!-- Result filter -->
-            <input type="text" id="result-filter" class="form-control form-control-sm" placeholder="Filter hasil..." style="width:200px;background:#f5f0eb;border-color:var(--border-card);color:var(--text-primary);font-size:0.75rem" oninput="filterResults()">
+            <input type="text" id="result-filter" class="form-control form-control-sm" placeholder="Filter hasil..." style="width:200px;font-size:0.75rem" oninput="filterResults()">
             <!-- Column toggle -->
             <div class="dropdown">
                 <button class="btn btn-glass btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" style="font-size:0.7rem">
@@ -210,7 +210,7 @@
     <div class="card-body p-0">
         <div class="table-responsive" id="table-container" style="display:none;max-height:70vh;overflow-y:auto">
             <table class="table table-hover mb-0" id="data-table">
-                <thead style="position:sticky;top:0;z-index:2;background:var(--card-bg)">
+                <thead style="position:sticky;top:0;z-index:2;background:var(--bg-card)">
                     <tr>
                         <th class="sortable" data-key="Kode Divisi" data-col="0">Kd Div <i class="fas fa-sort fa-xs" style="opacity:0.3"></i></th>
                         <th class="sortable" data-key="Divisi" data-col="1">Divisi <i class="fas fa-sort fa-xs" style="opacity:0.3"></i></th>

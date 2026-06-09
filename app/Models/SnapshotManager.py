@@ -1691,6 +1691,38 @@ class SnapshotManager:
             return {'status': 'error', 'message': str(e)}
 
     @classmethod
+    def get_semua_barang_stok_awal(cls, server_key, stok_filter='all'):
+        """
+        Fetch ALL items with their initial stock (stok_awal).
+        stok_filter options: 'gt_zero' (> 0), 'gte_zero' (>= 0), 'all' (no filter)
+        """
+        from app.Models.Database import db_manager
+        
+        stok_condition = ""
+        if stok_filter == 'gt_zero':
+            stok_condition = "WHERE bd.stok_awal > 0"
+        elif stok_filter == 'gte_zero':
+            stok_condition = "WHERE bd.stok_awal >= 0"
+
+        query = f"""
+        SELECT 
+            bd.kd_divisi,
+            bd.kd_barang,
+            b.nama AS nama_barang,
+            bd.stok_awal
+        FROM m_barang_divisi bd (NOLOCK)
+        INNER JOIN m_barang b (NOLOCK) ON bd.kd_barang = b.kd_barang
+        {stok_condition}
+        ORDER BY bd.kd_divisi, bd.kd_barang;
+        """
+        
+        try:
+            results = db_manager.execute_query(server_key, query)
+            return {'status': 'success', 'data': results}
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    @classmethod
     def get_barang_histori(cls, server_key, kd_barang, kd_divisi, start_date=None, end_date=None):
         """
         Fetch transaction history for ONE item (optional division) from MSSQL.

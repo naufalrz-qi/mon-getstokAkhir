@@ -72,6 +72,12 @@ class StokController:
         """API: Dapatkan list server yang available"""
         try:
             servers = db_manager.get_available_servers()
+            
+            # Filter berdasarkan akses jika bukan super_admin
+            if session.get('role') != 'super_admin':
+                allowed_servers = session.get('servers', [])
+                servers = [s for s in servers if s['key'] in allowed_servers]
+                
             return jsonify({'status': 'success', 'servers': servers})
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -88,6 +94,10 @@ class StokController:
 
             if server_key not in server_keys:
                 return jsonify({'status': 'error', 'message': f'Server key "{server_key}" tidak valid'}), 400
+                
+            if session.get('role') != 'super_admin':
+                if server_key not in session.get('servers', []):
+                    return jsonify({'status': 'error', 'message': f'Akses ke server "{server_key}" ditolak'}), 403
 
             session['selected_server'] = server_key
             session.modified = True
@@ -425,6 +435,20 @@ class StokController:
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
     @staticmethod
+    def fetch_semua_barang_stok_awal():
+        """API: Get list of ALL items with their initial stock"""
+        try:
+            server_key = session.get('selected_server')
+            if not server_key:
+                return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
+
+            stok_filter = request.args.get('stok_filter', 'all')
+            result = SnapshotManager.get_semua_barang_stok_awal(server_key, stok_filter)
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
     def export_xlsx():
         """API: Export search result as XLSX file"""
         try:
@@ -657,6 +681,73 @@ class StokController:
             output.seek(0)
 
             filename = f"barang_tanpa_transaksi_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            return send_file(
+                output, 
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True, 
+                download_name=filename
+            )
+
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def export_semua_barang_stok_awal_xlsx():
+        """API: Export list of ALL items with their initial stock to XLSX"""
+        try:
+            server_key = session.get('selected_server')
+            if not server_key:
+                return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
+
+            stok_filter = request.args.get('stok_filter', 'all')
+            result = SnapshotManager.get_semua_barang_stok_awal(server_key, stok_filter)
+            if result['status'] != 'success':
+                return jsonify(result), 400
+
+            data = result['data']
+            
+            # Create workbook
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Stok Awal Semua Barang"
+
+            # Headers
+            headers = ['Kode Divisi', 'Kode Barang', 'Nama Barang', 'Stok Awal']
+            ws.append(headers)
+
+            # Style headers
+            for cell in ws[1]:
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal='center')
+
+            # Data rows
+            for row in data:
+                ws.append([
+                    row.get('kd_divisi'), 
+                    row.get('kd_barang'), 
+                    row.get('nama_barang'),
+                    row.get('stok_awal')
+                ])
+
+            # Auto-size columns
+            for col in ws.columns:
+                max_length = 0
+                column = col[0].column_letter
+                for cell in col:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = (max_length + 2)
+                ws.column_dimensions[column].width = adjusted_width
+
+            # Save to buffer
+            output = BytesIO()
+            wb.save(output)
+            output.seek(0)
+
+            filename = f"semua_barang_stok_awal_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
             return send_file(
                 output, 
                 mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
