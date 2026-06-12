@@ -512,6 +512,38 @@ class SnapshotRunner:
     
                     now_str = datetime.now().isoformat()
                     conn_db.execute("INSERT OR REPLACE INTO snapshot_meta VALUES ('last_refresh', ?)", (now_str,))
+                    
+                    try:
+                        tahun_ini = datetime.now().year
+                        conn_mssql = db_manager.get_connection(server_key)
+                        if conn_mssql:
+                            cursor_mssql = conn_mssql.cursor()
+                            
+                            # Penjualan
+                            cursor_mssql.execute(_load_sql('../dashboard/01_penjualan_summary.sql'), [tahun_ini, tahun_ini])
+                            rows_jual = cursor_mssql.fetchall()
+                            conn_db.execute('DELETE FROM dashboard_penjualan WHERE tahun = ?', (tahun_ini,))
+                            if rows_jual:
+                                conn_db.executemany(
+                                    'INSERT INTO dashboard_penjualan VALUES (?,?,?,?,?,?)',
+                                    [tuple(r) for r in rows_jual]
+                                )
+                                
+                            # Pembelian
+                            cursor_mssql.execute(_load_sql('../dashboard/02_pembelian_summary.sql'), [tahun_ini, tahun_ini])
+                            rows_beli = cursor_mssql.fetchall()
+                            conn_db.execute('DELETE FROM dashboard_pembelian WHERE tahun = ?', (tahun_ini,))
+                            if rows_beli:
+                                conn_db.executemany(
+                                    'INSERT INTO dashboard_pembelian VALUES (?,?,?,?,?,?)',
+                                    [tuple(r) for r in rows_beli]
+                                )
+                                
+                            conn_mssql.close()
+                            print(f"[DELTA] Dashboard summaries for {tahun_ini} updated successfully.")
+                    except Exception as dash_err:
+                        print(f"[DELTA ERROR] Failed to update dashboard summaries: {dash_err}")
+
                     conn_db.commit()
                 except sqlite3.DatabaseError as e:
                     if 'malformed' in str(e).lower() or 'corrupt' in str(e).lower():
