@@ -242,6 +242,11 @@
             </div>
         </div>
         <div class="filter-group">
+            <label for="filter-mode" style="font-weight: 600;">Mode:</label>
+            <select id="filter-mode" class="form-select form-select-sm" style="width: auto; font-weight: 600; background-color: var(--bg-body); border-color: var(--border-card); color: var(--text-primary);">
+                <option value="single">Cabang Saat Ini</option>
+                <option value="global">Global (Semua Cabang)</option>
+            </select>
             <label for="filter-tahun" style="font-weight: 600;">Tahun:</label>
             <select id="filter-tahun" class="form-select form-select-sm" style="width: auto; min-width: 120px; font-weight: 600; background-color: var(--bg-body); border-color: var(--border-card); color: var(--text-primary);">
                 <!-- Akan diisi via JS -->
@@ -285,7 +290,7 @@
 
     <div class="bento-grid">
         <div class="bento-card col-span-12">
-            <div class="bento-card-title">Leaderboard Cabang (Omset Penjualan)</div>
+            <div class="bento-card-title" id="title-leaderboard">Leaderboard Divisi / Cabang</div>
             <div class="chart-container" style="height: 350px;">
                 <canvas id="chart-divisi"></canvas>
             </div>
@@ -443,11 +448,14 @@
 
     async function loadDashboardData() {
         const tahun = document.getElementById('filter-tahun').value;
+        const mode = document.getElementById('filter-mode').value;
         const overlay = document.getElementById('loading-overlay');
         overlay.classList.add('active');
+        
+        document.getElementById('current-server-name').innerText = mode === 'global' ? 'Semua Cabang (Global)' : (localStorage.getItem('arunika-server-name') || 'Belum Dipilih');
 
         try {
-            const res = await fetch(`/api/dashboard/summary?tahun=${tahun}`);
+            const res = await fetch(`/api/dashboard/summary?tahun=${tahun}&mode=${mode}`);
             const json = await res.json();
             
             if (json.status === 'success') {
@@ -470,6 +478,10 @@
         document.getElementById('kpi-laba').innerText = 'Laba: ' + formatRp(data.kpi.laba_kotor || 0);
         document.getElementById('kpi-transaksi').innerText = formatNum(data.kpi.total_transaksi || 0);
         document.getElementById('kpi-basket-size').innerText = formatRp(data.kpi.avg_basket_size || 0);
+        
+        // Leaderboard Chart Title
+        const mode = document.getElementById('filter-mode').value;
+        document.getElementById('title-leaderboard').innerText = mode === 'global' ? 'Leaderboard Omset Cabang' : 'Leaderboard Divisi';
         
         // Leaderboard Cabang Chart
         const divisiData = data.penjualan_per_divisi || [];
@@ -668,6 +680,9 @@
         // Event Listeners
         document.getElementById('btn-refresh').addEventListener('click', loadDashboardData);
         selectTahun.addEventListener('change', loadDashboardData);
+        document.getElementById('filter-mode').addEventListener('change', () => {
+            loadDashboardData();
+        });
 
         // Initial Load
         loadDashboardData();

@@ -111,9 +111,17 @@ class StokController:
                 tahun = int(tahun)
             except ValueError:
                 tahun = None
-
+        mode = request.args.get('mode', 'single')
+        
         from app.Services.DashboardService import DashboardService
-        result = DashboardService.get_summary(server_key, tahun)
+        
+        if mode == 'global':
+            result = DashboardService.get_global_summary(tahun)
+        else:
+            if not server_key:
+                return jsonify({'status': 'error', 'message': 'No server selected'}), 400
+            result = DashboardService.get_summary(server_key, tahun)
+            
         if "error" in result:
             return jsonify({'status': 'error', 'message': result['error']}), 500
             

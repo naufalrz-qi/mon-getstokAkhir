@@ -226,3 +226,97 @@ class DashboardService:
             return {"error": str(e)}
         except Exception as e:
             return {"error": str(e)}
+
+    @classmethod
+    def get_global_summary(cls, tahun=None):
+        from app.Models.Database import db_manager
+        from collections import defaultdict
+        servers = db_manager.get_available_servers()
+        
+        global_kpi = {
+            "total_penjualan": 0, "total_pembelian": 0, "laba_kotor": 0, "total_transaksi": 0, 
+            "nilai_inventori": 0, "total_sku": 0, "stok_habis": 0, "stok_rendah": 0
+        }
+        cabang_leaderboard = []
+        all_top_barang = defaultdict(lambda: [0, 0])
+        all_top_kategori = defaultdict(float)
+        all_top_merk = defaultdict(float)
+        all_dead_stock = []
+        all_stok_kritis = []
+        
+        for s in servers:
+            if s.get('type') in ['retail', 'eceran']:
+                continue
+                
+            server_key = s['key']
+            server_name = s['name']
+            
+            res = cls.get_summary(server_key, tahun)
+            if "error" in res:
+                continue
+                
+            kpi = res['kpi']
+            for k in ["total_penjualan", "total_pembelian", "laba_kotor", "total_transaksi", "nilai_inventori", "total_sku", "stok_habis", "stok_rendah"]:
+                global_kpi[k] += kpi.get(k, 0)
+                
+            cabang_leaderboard.append({
+                'divisi': server_name,
+                'nilai': kpi.get('total_penjualan', 0)
+            })
+            
+            for b in res.get('top_barang_terlaris', []):
+                k = (b['barang'], b['kategori'])
+                all_top_barang[k][0] += b['total_qty']
+                all_top_barang[k][1] += b['total_nominal']
+                
+            for kat in res.get('top_kategori_laris', []):
+                all_top_kategori[kat['kategori']] += kat['total_qty']
+                
+            for mrk in res.get('top_merk_laris', []):
+                all_top_merk[mrk['merk']] += mrk['total_qty']
+                
+            for ds in res.get('dead_stock', []):
+                ds['cabang'] = server_name
+                all_dead_stock.append(ds)
+                
+            for sk in res.get('stok_kritis', []):
+                sk['cabang'] = server_name
+                all_stok_kritis.append(sk)
+                
+        cabang_leaderboard.sort(key=lambda x: x['nilai'], reverse=True)
+        
+        top_barang = [{'barang': k[0], 'kategori': k[1], 'total_qty': v[0], 'total_nominal': v[1]} for k, v in all_top_barang.items()]
+        top_barang.sort(key=lambda x: x['total_qty'], reverse=True)
+        
+        top_kategori = [{'kategori': k, 'total_qty': v} for k, v in all_top_kategori.items()]
+        top_kategori.sort(key=lambda x: x['total_qty'], reverse=True)
+        
+        top_merk = [{'merk': k, 'total_qty': v} for k, v in all_top_merk.items()]
+        top_merk.sort(key=lambda x: x['total_qty'], reverse=True)
+        
+        all_dead_stock.sort(key=lambda x: x['stok_akhir'], reverse=True)
+        
+        if global_kpi["total_penjualan"] > 0:
+            global_kpi["margin_persen"] = round((global_kpi["laba_kotor"] / global_kpi["total_penjualan"] * 100), 2)
+        else:
+            global_kpi["margin_persen"] = 0
+            
+        if global_kpi["total_transaksi"] > 0:
+            global_kpi["avg_basket_size"] = global_kpi["total_penjualan"] / global_kpi["total_transaksi"]
+        else:
+            global_kpi["avg_basket_size"] = 0
+        
+        return {
+            "kpi": global_kpi,
+            "penjualan_per_divisi": cabang_leaderboard,
+            "top_barang_terlaris": top_barang[:10],
+            "top_kategori_laris": top_kategori[:10],
+            "top_merk_laris": top_merk[:10],
+            "dead_stock": all_dead_stock[:20],
+            "stok_kritis": all_stok_kritis[:20],
+            "status_stok": {
+                "sehat": global_kpi["total_sku"] - global_kpi["stok_habis"] - global_kpi["stok_rendah"],
+                "rendah": global_kpi["stok_rendah"],
+                "habis": global_kpi["stok_habis"]
+            }
+        }
