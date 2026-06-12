@@ -143,13 +143,15 @@ class DashboardService:
 
             # 4. Dead stock (Ada stok, tapi tidak ada penjualan di dashboard_penjualan)
             cursor.execute('''
-                SELECT s.barang, s.kategori, s.stok_akhir
-                FROM stok_snapshot s
-                LEFT JOIN dashboard_penjualan p ON s.kd_barang = p.kd_barang {}
-                WHERE s.stok_akhir > 0 AND p.kd_barang IS NULL
-                ORDER BY s.stok_akhir DESC
+                SELECT barang, kategori, stok_akhir
+                FROM stok_snapshot
+                WHERE stok_akhir > 0
+                  AND kd_barang NOT IN (
+                      SELECT kd_barang FROM dashboard_penjualan {}
+                  )
+                ORDER BY stok_akhir DESC
                 LIMIT 20
-            '''.format("AND p.tahun = ?" if tahun else ""), params)
+            '''.format("WHERE tahun = ?" if tahun else ""), params)
             dead_stock = [dict(row) for row in cursor.fetchall()]
 
             conn.close()

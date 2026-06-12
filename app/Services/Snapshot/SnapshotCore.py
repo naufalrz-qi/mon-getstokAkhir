@@ -128,6 +128,8 @@ class SnapshotCore:
                 )
             ''')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_dashboard_pembelian_tahun ON dashboard_pembelian(tahun)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_dashboard_penjualan_barang ON dashboard_penjualan(kd_barang)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_dashboard_pembelian_barang ON dashboard_pembelian(kd_barang)')
 
             conn.commit()
             return conn
