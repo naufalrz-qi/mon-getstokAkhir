@@ -441,10 +441,10 @@
     });
     observer.observe(document.documentElement, { attributes: true });
 
+    let charts = {};
+
     // Initial apply
     applyChartTheme();
-
-    let charts = {};
 
     async function loadDashboardData() {
         const tahun = document.getElementById('filter-tahun').value;
