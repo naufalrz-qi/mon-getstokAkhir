@@ -327,7 +327,10 @@
                     startPolling();
                 }
             })
-            .catch(err => showAlert('error', 'Error: ' + err.message))
+            .catch(err => {
+                if(err.message === 'Failed to fetch' || err.name === 'AbortError') return;
+                showAlert('error', 'Error: ' + err.message);
+            })
             .finally(() => {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-sync-alt fa-sm"></i> Full Refresh';
@@ -357,7 +360,10 @@
                     startPolling();
                 }
             })
-            .catch(err => showAlert('error', 'Error: ' + err.message))
+            .catch(err => {
+                if(err.message === 'Failed to fetch' || err.name === 'AbortError') return;
+                showAlert('error', 'Error: ' + err.message);
+            })
             .finally(() => {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-bolt fa-sm"></i> Quick Update';
@@ -533,7 +539,10 @@
                     showAlert('error', data.message || 'Gagal memuat data');
                 }
             })
-            .catch(err => showAlert('error', 'Error: ' + err.message));
+            .catch(err => {
+                if(err.message === 'Failed to fetch' || err.name === 'AbortError') return;
+                showAlert('error', 'Error: ' + err.message);
+            });
     }
 
     function populateFilterOptions(selectId, data, field) {

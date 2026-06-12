@@ -284,11 +284,11 @@
                     currentPageTanpaTransaksi = 1;
                     renderTableTanpaTransaksi();
                 } else {
-                    alert('Gagal mengambil data: ' + data.message);
+                    console.warn('Gagal mengambil data: ' + data.message);
                 }
             })
             .catch(err => {
-                alert('Error koneksi ke server.');
+                console.error('Error koneksi ke server.');
                 console.error(err);
             })
             .finally(() => {
@@ -413,11 +413,11 @@
                     currentPageSemuaBarang = 1;
                     renderTableSemuaBarangStokAwal();
                 } else {
-                    alert('Gagal mengambil data: ' + data.message);
+                    console.warn('Gagal mengambil data: ' + data.message);
                 }
             })
             .catch(err => {
-                alert('Error koneksi ke server.');
+                console.error('Error koneksi ke server.');
                 console.error(err);
             })
             .finally(() => {
@@ -550,11 +550,11 @@
                     currentPageDenganTransaksi = 1;
                     renderTableDenganTransaksi();
                 } else {
-                    alert('Gagal mengambil data: ' + data.message);
+                    console.warn('Gagal mengambil data: ' + data.message);
                 }
             })
             .catch(err => {
-                alert('Error koneksi ke server.');
+                console.error('Error koneksi ke server.');
                 console.error(err);
             })
             .finally(() => {

@@ -47,6 +47,7 @@ def register_routes(app):
     # ==========================================================
     # Web Routes (HTML Pages) — semua butuh login
     # ==========================================================
+    Route.get('/dashboard', login(StokController.dashboard_page))
     Route.get('/', login(StokController.index_page))
     Route.get('/stok/index', login(StokController.index_page))
     Route.get('/stok/', menu('stok_index')(StokController.monitoring_page))
@@ -58,6 +59,7 @@ def register_routes(app):
     Route.get('/stok/mass-refresh', admin(StokController.mass_refresh_page))
 
     # API endpoints
+    Route.get('/api/dashboard/summary', login(StokController.fetch_dashboard_summary))
     Route.get('/stok/api/monitoring', menu('stok_index')(StokController.fetch_monitoring_data))
     Route.get('/stok/api/histori', menu('stok_histori')(StokController.fetch_barang_histori))
     Route.get('/master/api/barang', login(StokController.fetch_barang_data))
