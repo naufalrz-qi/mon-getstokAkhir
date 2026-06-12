@@ -250,7 +250,7 @@ class DashboardService:
         all_stok_kritis = []
         
         for s in servers:
-            if s.get('type') in ['retail', 'eceran']:
+            if s.get('type') in ['retail', 'eceran', 'testing']:
                 continue
             
             # Abaikan jika user secara eksplisit mematikan opsi include_in_dashboard
