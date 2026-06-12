@@ -723,8 +723,8 @@ class SnapshotRunner:
                     'harga_avg':  ('10_harga_avg.sql',   None),
                     'opname_detail': ('11_opname_detail.sql', None),
                 }
-                query_tasks['dashboard_penjualan'] = ('../dashboard/01_penjualan_summary.sql', [tahun_ini, tahun_ini])
-                query_tasks['dashboard_pembelian'] = ('../dashboard/02_pembelian_summary.sql', [tahun_ini, tahun_ini])
+                query_tasks['dashboard_penjualan'] = ('../dashboard/01_penjualan_summary.sql', [tahun_ini - 5, tahun_ini])
+                query_tasks['dashboard_pembelian'] = ('../dashboard/02_pembelian_summary.sql', [tahun_ini - 5, tahun_ini])
 
                 fetch_results = {}
                 errors = []
