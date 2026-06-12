@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from app.Services.Snapshot.SnapshotState import SnapshotState
 
+from app.Services.Snapshot.SnapshotCore import SnapshotCore
 QUERIES_DIR = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'database', 'queries')
 PARALLEL_DIR = os.path.join(QUERIES_DIR, 'parallel')
 SNAPSHOTS_DIR = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'database', 'snapshots')
@@ -64,7 +65,7 @@ class SnapshotRunner:
             if server_key in SnapshotState._refresh_threads and SnapshotState._refresh_threads[server_key].is_alive():
                 return {'status': 'already_running', 'message': 'Refresh sedang berjalan'}
     
-            db_path = cls._db_path(server_key)
+            db_path = SnapshotCore._db_path(server_key)
             if not os.path.exists(db_path):
                 return cls.trigger_refresh(server_key, tanggal)  # No base, do full refresh
     
@@ -101,7 +102,7 @@ class SnapshotRunner:
             if server_key in SnapshotState._refresh_threads and SnapshotState._refresh_threads[server_key].is_alive():
                 return {'status': 'already_running', 'message': 'Refresh sedang berjalan'}
     
-            db_path = cls._db_path(server_key)
+            db_path = SnapshotCore._db_path(server_key)
             if not os.path.exists(db_path):
                 return cls.trigger_refresh(server_key, tanggal)  # No base, do full refresh
     
@@ -139,7 +140,7 @@ class SnapshotRunner:
                 return {'status': 'already_running', 'message': 'Refresh sedang berjalan'}
     
             # Check if we have a base snapshot to delta from
-            db_path = cls._db_path(server_key)
+            db_path = SnapshotCore._db_path(server_key)
             if not os.path.exists(db_path):
                 return cls.trigger_refresh(server_key, tanggal)  # No base, do full refresh
     
@@ -364,7 +365,7 @@ class SnapshotRunner:
                 if len(delta_rows) == 0:
                     # No changes
                     now_str = datetime.now().isoformat()
-                    db_path = cls._db_path(server_key)
+                    db_path = SnapshotCore._db_path(server_key)
                     conn_db = None
                     try:
                         conn_db = sqlite3.connect(db_path)
@@ -481,10 +482,10 @@ class SnapshotRunner:
                 status['progress'] = 85
                 status['message'] = 'Menyimpan perubahan ke snapshot...'
     
-                db_path = cls._db_path(server_key)
+                db_path = SnapshotCore._db_path(server_key)
                 conn_db = None
                 try:
-                    conn_db = cls._init_db(db_path)
+                    conn_db = SnapshotCore._init_db(db_path)
                     batch_update = []
                     for (kd_divisi, kd_barang) in updated_keys:
                         batch_update.append((recalc_map[(kd_divisi, kd_barang)], kd_divisi, kd_barang))
@@ -854,10 +855,10 @@ class SnapshotRunner:
                 status['message'] = f'Menyimpan {len(final_rows)} item ke snapshot lokal...'
     
                 # ── Phase 3: Write to SQLite ──
-                db_path = cls._db_path(server_key)
+                db_path = SnapshotCore._db_path(server_key)
                 conn = None
                 try:
-                    conn = cls._init_db(db_path)
+                    conn = SnapshotCore._init_db(db_path)
                     conn.execute('DELETE FROM stok_snapshot')
                 except sqlite3.DatabaseError as e:
                     if 'malformed' in str(e).lower() or 'corrupt' in str(e).lower():
@@ -874,7 +875,7 @@ class SnapshotRunner:
                             except OSError as oe:
                                 print(f"[SNAPSHOT] Warning: could not remove {db_path + ext}: {oe}")
                         
-                        conn = cls._init_db(db_path)
+                        conn = SnapshotCore._init_db(db_path)
                         conn.execute('DELETE FROM stok_snapshot')
                     else:
                         raise
@@ -983,8 +984,8 @@ class SnapshotRunner:
                 status['progress'] = 90
                 status['message'] = 'Membuat Checkpoint Base Data...'
                 stok_map = {(r['kd_divisi'], r['kd_barang']): r['stok_akhir'] for r in final_rows}
-                cls.save_checkpoints(server_key, 'yearly', tanggal, stok_map)
-                cls.save_checkpoints(server_key, 'weekly', tanggal, stok_map)
+                SnapshotCore.save_checkpoints(server_key, 'yearly', tanggal, stok_map)
+                SnapshotCore.save_checkpoints(server_key, 'weekly', tanggal, stok_map)
     
                 # ── Phase 4: Load into memory ──
                 status['progress'] = 95
@@ -1158,7 +1159,7 @@ class SnapshotRunner:
 
     @classmethod
     def _load_to_memory(cls, server_key):
-            db_path = cls._db_path(server_key)
+            db_path = SnapshotCore._db_path(server_key)
             if not os.path.exists(db_path):
                 return
             conn = None

@@ -38,3 +38,8 @@ Desktop.ini
 
 sketch.txt
 grosirPusat_schema.txt
+
+# Debug scripts
+check_dbs.py
+force_full_refresh.py
+test_*.py

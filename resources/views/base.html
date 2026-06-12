@@ -157,6 +157,7 @@
         (function initTheme() {
             const saved = localStorage.getItem('arunika-theme') || 'light';
             document.documentElement.setAttribute('data-theme', saved);
+            document.documentElement.setAttribute('data-bs-theme', saved);
         })();
 
         function toggleTheme() {
@@ -164,6 +165,7 @@
             const current = document.documentElement.getAttribute('data-theme');
             const next = current === 'dark' ? 'light' : 'dark';
             document.documentElement.setAttribute('data-theme', next);
+            document.documentElement.setAttribute('data-bs-theme', next);
             localStorage.setItem('arunika-theme', next);
             updateThemeUI(next);
             setTimeout(() => document.body.classList.remove('theme-transitioning'), 400);
