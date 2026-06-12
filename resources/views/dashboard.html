@@ -489,7 +489,7 @@
             labels: divisiData.map(d => d.divisi),
             datasets: [{
                 label: 'Omset Penjualan (Rp)',
-                data: divisiData.map(d => d.nilai),
+                data: divisiData.map(d => d.total !== undefined ? d.total : d.nilai),
                 backgroundColor: 'rgba(96, 165, 250, 0.8)',
                 borderColor: 'rgb(59, 130, 246)',
                 borderWidth: 1,
@@ -510,8 +510,9 @@
             htmlKritis = '<tr><td colspan="3" class="text-center">Aman, tidak ada stok kritis</td></tr>';
         } else {
             stokKritis.slice(0,10).forEach(item => {
+                const cabangBadge = item.cabang ? ` <span class="badge" style="background: var(--bg-card); color: var(--text-muted); font-size: 0.7em; border: 1px solid var(--border-card);">${item.cabang}</span>` : '';
                 htmlKritis += `<tr>
-                    <td><div style="font-weight: 600">${item.barang}</div></td>
+                    <td><div style="font-weight: 600">${item.barang}${cabangBadge}</div></td>
                     <td><span class="badge badge-warning">${item.kategori}</span></td>
                     <td style="text-align: right; color: var(--danger); font-weight: bold;">${formatNum(item.stok_akhir)}</td>
                 </tr>`;
@@ -525,8 +526,9 @@
             htmlDead = '<tr><td colspan="3" class="text-center">Bagus, tidak ada stok mati</td></tr>';
         } else {
             deadStock.slice(0,10).forEach(item => {
+                const cabangBadge = item.cabang ? ` <span class="badge" style="background: var(--bg-card); color: var(--text-muted); font-size: 0.7em; border: 1px solid var(--border-card);">${item.cabang}</span>` : '';
                 htmlDead += `<tr>
-                    <td><div style="font-weight: 600">${item.barang}</div></td>
+                    <td><div style="font-weight: 600">${item.barang}${cabangBadge}</div></td>
                     <td><span class="badge badge-danger">${item.kategori}</span></td>
                     <td style="text-align: right; color: var(--text-primary); font-weight: bold;">${formatNum(item.stok_akhir)}</td>
                 </tr>`;
@@ -537,7 +539,10 @@
         // --- 3. ANALISIS PRODUK ---
         const topBarang = data.top_barang_terlaris || [];
         renderHorizontalBarChart('chart-barang', {
-            labels: topBarang.map(d => d.barang.length > 25 ? d.barang.substring(0,25)+'...' : d.barang),
+            labels: topBarang.map(d => {
+                const name = d.barang || 'Unknown';
+                return name.length > 25 ? name.substring(0,25) + '...' : name;
+            }),
             datasets: [{
                 label: 'Kuantitas Terjual',
                 data: topBarang.map(d => d.total_qty),

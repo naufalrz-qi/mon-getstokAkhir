@@ -152,12 +152,17 @@ class DashboardService:
             total_pembelian = sum(row['total_nominal'] for row in rows_pembelian)
 
             # 4. Total Transaksi
-            query_trans = "SELECT SUM(total_transaksi) as total_transaksi FROM dashboard_transaksi"
-            if tahun:
-                query_trans += " WHERE tahun = ?"
-            cursor.execute(query_trans, params)
-            row_trans = cursor.fetchone()
-            total_transaksi = row_trans['total_transaksi'] if row_trans and row_trans['total_transaksi'] else 0
+            total_transaksi = 0
+            try:
+                query_trans = "SELECT SUM(total_transaksi) as total_transaksi FROM dashboard_transaksi"
+                if tahun:
+                    query_trans += " WHERE tahun = ?"
+                cursor.execute(query_trans, params)
+                row_trans = cursor.fetchone()
+                if row_trans and row_trans['total_transaksi']:
+                    total_transaksi = row_trans['total_transaksi']
+            except sqlite3.OperationalError:
+                pass
 
             # 5. Dead stock (Ada stok, tapi tidak ada penjualan di dashboard_penjualan)
             cursor.execute('''
