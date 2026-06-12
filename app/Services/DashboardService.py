@@ -151,7 +151,15 @@ class DashboardService:
             
             total_pembelian = sum(row['total_nominal'] for row in rows_pembelian)
 
-            # 4. Dead stock (Ada stok, tapi tidak ada penjualan di dashboard_penjualan)
+            # 4. Total Transaksi
+            query_trans = "SELECT SUM(total_transaksi) as total_transaksi FROM dashboard_transaksi"
+            if tahun:
+                query_trans += " WHERE tahun = ?"
+            cursor.execute(query_trans, params)
+            row_trans = cursor.fetchone()
+            total_transaksi = row_trans['total_transaksi'] if row_trans and row_trans['total_transaksi'] else 0
+
+            # 5. Dead stock (Ada stok, tapi tidak ada penjualan di dashboard_penjualan)
             cursor.execute('''
                 SELECT barang, kategori, stok_akhir
                 FROM stok_snapshot
@@ -170,6 +178,8 @@ class DashboardService:
             margin_persen = 0
             if total_penjualan > 0:
                 margin_persen = (laba_kotor / total_penjualan) * 100
+                
+            avg_basket_size = total_penjualan / total_transaksi if total_transaksi > 0 else 0
 
             # Hitung mutasi dan retur (karena kita tidak menyimpan tabelnya, kita estimasi atau hardcode dulu,
             # Atau bisa skip komposisi transaksi jika tidak lengkap)
@@ -185,6 +195,8 @@ class DashboardService:
                     "total_pembelian": total_pembelian,
                     "laba_kotor": laba_kotor,
                     "margin_persen": round(margin_persen, 2),
+                    "total_transaksi": total_transaksi,
+                    "avg_basket_size": avg_basket_size,
                     "nilai_inventori": kpi_stok.get("nilai_inventori") or 0,
                     "total_sku": kpi_stok.get("total_sku") or 0,
                     "stok_habis": kpi_stok.get("stok_habis") or 0,

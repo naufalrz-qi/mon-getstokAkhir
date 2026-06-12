@@ -236,7 +236,7 @@
     <!-- Filter Bar -->
     <div class="filter-bar">
         <div>
-            <h2 style="font-size: 1.5rem; font-weight: 800; margin: 0;">Dashboard Bisnis</h2>
+            <h2 style="font-size: 1.5rem; font-weight: 800; margin: 0; color: var(--text-primary);">Dashboard Bisnis</h2>
             <div style="color: var(--text-muted); font-size: 0.875rem; margin-top: 0.25rem;">
                 Server: <strong id="current-server-name">Loading...</strong>
             </div>
@@ -268,18 +268,17 @@
                 <div class="kpi-value" id="kpi-margin">0%</div>
                 <div class="kpi-subtext" id="kpi-laba">Laba: Rp 0</div>
             </div>
-            <!-- Dummy/Coming soon metrics requested by user -->
-            <div class="kpi-card slate">
+            <div class="kpi-card purple">
                 <i class="fas fa-receipt kpi-icon"></i>
                 <div class="kpi-title">Total Transaksi</div>
-                <div class="kpi-value" style="color: var(--text-muted)">N/A</div>
-                <div class="kpi-subtext">Segera Hadir</div>
+                <div class="kpi-value" id="kpi-transaksi">0</div>
+                <div class="kpi-subtext">Struk/Faktur tercetak</div>
             </div>
-            <div class="kpi-card slate">
+            <div class="kpi-card orange">
                 <i class="fas fa-shopping-basket kpi-icon"></i>
                 <div class="kpi-title">Avg. Basket Size</div>
-                <div class="kpi-value" style="color: var(--text-muted)">N/A</div>
-                <div class="kpi-subtext">Segera Hadir</div>
+                <div class="kpi-value" id="kpi-basket-size">Rp 0</div>
+                <div class="kpi-subtext">Rata-rata per transaksi</div>
             </div>
         </div>
     </div>
@@ -389,12 +388,56 @@
         return new Intl.NumberFormat('id-ID').format(num);
     };
 
-    // Chart.js Default Configs
-    Chart.defaults.color = 'var(--text-muted)';
-    Chart.defaults.font.family = "'Inter', sans-serif";
-    Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(0, 0, 0, 0.8)';
-    Chart.defaults.plugins.tooltip.padding = 12;
-    Chart.defaults.plugins.tooltip.titleFont = { size: 14, weight: 'bold' };
+    // Chart.js Theme Management
+    function getCSSVar(varName) {
+        return getComputedStyle(document.body).getPropertyValue(varName).trim();
+    }
+
+    function applyChartTheme() {
+        const textPrimary = getCSSVar('--text-primary');
+        const textMuted = getCSSVar('--text-muted');
+        const borderCard = getCSSVar('--border-card');
+        const isLight = getCSSVar('--bg-card') === '#ffffff';
+
+        Chart.defaults.color = textMuted;
+        Chart.defaults.font.family = "'Inter', sans-serif";
+        Chart.defaults.plugins.tooltip.backgroundColor = isLight ? 'rgba(0, 0, 0, 0.8)' : 'rgba(255, 255, 255, 0.9)';
+        Chart.defaults.plugins.tooltip.titleColor = isLight ? '#ffffff' : '#000000';
+        Chart.defaults.plugins.tooltip.bodyColor = isLight ? '#ffffff' : '#000000';
+        Chart.defaults.plugins.tooltip.padding = 12;
+        Chart.defaults.plugins.tooltip.titleFont = { size: 14, weight: 'bold' };
+        
+        // Re-render all charts if they exist
+        for (let id in charts) {
+            if (charts[id] && typeof charts[id].update === 'function') {
+                const chart = charts[id];
+                if (chart.options.scales) {
+                    if (chart.options.scales.x && chart.options.scales.x.grid) chart.options.scales.x.grid.color = borderCard;
+                    if (chart.options.scales.y && chart.options.scales.y.grid) chart.options.scales.y.grid.color = borderCard;
+                }
+                if (chart.options.plugins) {
+                    if (chart.options.plugins.datalabels) chart.options.plugins.datalabels.color = textPrimary;
+                    if (chart.options.plugins.legend && chart.options.plugins.legend.labels) {
+                        chart.options.plugins.legend.labels.color = textPrimary;
+                    }
+                }
+                chart.update();
+            }
+        }
+    }
+    
+    // Listen for theme changes using MutationObserver on html element
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.attributeName === 'data-theme') {
+                applyChartTheme();
+            }
+        });
+    });
+    observer.observe(document.documentElement, { attributes: true });
+
+    // Initial apply
+    applyChartTheme();
 
     let charts = {};
 
@@ -425,6 +468,8 @@
         document.getElementById('kpi-penjualan').innerText = formatRp(data.kpi.total_penjualan || 0);
         document.getElementById('kpi-margin').innerText = data.kpi.margin_persen + '%';
         document.getElementById('kpi-laba').innerText = 'Laba: ' + formatRp(data.kpi.laba_kotor || 0);
+        document.getElementById('kpi-transaksi').innerText = formatNum(data.kpi.total_transaksi || 0);
+        document.getElementById('kpi-basket-size').innerText = formatRp(data.kpi.avg_basket_size || 0);
         
         // Leaderboard Cabang Chart
         const divisiData = data.penjualan_per_divisi || [];

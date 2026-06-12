@@ -538,7 +538,16 @@ class SnapshotRunner:
                                     'INSERT INTO dashboard_pembelian VALUES (?,?,?,?,?,?)',
                                     [tuple(r) for r in rows_beli]
                                 )
-                                
+
+                            # Transaksi
+                            cursor_mssql.execute(_load_sql('../dashboard/03_transaksi_summary.sql'), [tahun_ini, tahun_ini])
+                            rows_trans = cursor_mssql.fetchall()
+                            conn_db.execute('DELETE FROM dashboard_transaksi WHERE tahun = ?', (tahun_ini,))
+                            if rows_trans:
+                                conn_db.executemany(
+                                    'INSERT INTO dashboard_transaksi VALUES (?,?,?,?)',
+                                    [tuple(r) for r in rows_trans]
+                                )
                             conn_mssql.close()
                             print(f"[DELTA] Dashboard summaries for {tahun_ini} updated successfully.")
                     except Exception as dash_err:
@@ -757,6 +766,7 @@ class SnapshotRunner:
                 }
                 query_tasks['dashboard_penjualan'] = ('../dashboard/01_penjualan_summary.sql', [tahun_ini - 5, tahun_ini])
                 query_tasks['dashboard_pembelian'] = ('../dashboard/02_pembelian_summary.sql', [tahun_ini - 5, tahun_ini])
+                query_tasks['dashboard_transaksi'] = ('../dashboard/03_transaksi_summary.sql', [tahun_ini - 5, tahun_ini])
 
                 fetch_results = {}
                 errors = []
@@ -941,6 +951,20 @@ class SnapshotRunner:
                         conn.executemany(
                             'INSERT INTO dashboard_pembelian VALUES (?,?,?,?,?,?)',
                             pembelian_batch
+                        )
+
+                    # Insert dashboard_transaksi
+                    if 'dashboard_transaksi' in fetch_results:
+                        transaksi_batch = []
+                        for row in fetch_results['dashboard_transaksi']:
+                            transaksi_batch.append((
+                                row.get('kd_divisi'), row.get('total_transaksi', 0),
+                                row.get('bulan'), row.get('tahun')
+                            ))
+                        conn.execute('DELETE FROM dashboard_transaksi')
+                        conn.executemany(
+                            'INSERT INTO dashboard_transaksi VALUES (?,?,?,?)',
+                            transaksi_batch
                         )
 
                     now_str = datetime.now().isoformat()
