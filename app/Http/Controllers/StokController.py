@@ -17,6 +17,14 @@ class StokController:
     # ──────────── Views ────────────
 
     @staticmethod
+    def dashboard_page():
+        """HTML Page: Business Dashboard"""
+        server_key = session.get('selected_server')
+        if not server_key:
+            return render_template('index.html')
+        return render_template('dashboard.html')
+
+    @staticmethod
     def index_page():
         """HTML Page: Server selection"""
         return render_template('index.html')
@@ -89,6 +97,27 @@ class StokController:
             return jsonify({'status': 'success', 'servers': servers})
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def fetch_dashboard_summary():
+        """API: Get dashboard summary from local snapshot"""
+        server_key = session.get('selected_server')
+        if not server_key:
+            return jsonify({'status': 'error', 'message': 'No server selected'}), 400
+            
+        tahun = request.args.get('tahun')
+        if tahun:
+            try:
+                tahun = int(tahun)
+            except ValueError:
+                tahun = None
+
+        from app.Services.DashboardService import DashboardService
+        result = DashboardService.get_summary(server_key, tahun)
+        if "error" in result:
+            return jsonify({'status': 'error', 'message': result['error']}), 500
+            
+        return jsonify({'status': 'success', 'data': result})
 
     @staticmethod
     def select_server():
@@ -493,51 +522,21 @@ class StokController:
 
             data = result['data']
             
-            # Create workbook
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "Stok Monitoring"
-
-            # Headers
+            from app.Services.StokService import StokService
             headers = [
                 'Kode Divisi', 'Divisi', 'Kode Barang', 'Barang', 'Kategori', 
                 'Merk', 'Model', 'Warna', 'Ukuran', 'Stok Akhir', 
                 'Harga Average', 'Harga Jual', 'Nominal', 'Harga Beli Akhir'
             ]
-            ws.append(headers)
-
-            # Style headers
-            for cell in ws[1]:
-                cell.font = Font(bold=True)
-                cell.alignment = Alignment(horizontal='center')
-
-            # Data rows
-            for row in data:
-                ws.append([
+            def mapping_fn(row):
+                return [
                     row.get('Kode Divisi'), row.get('Divisi'), row.get('Kode Barang'), 
                     row.get('Barang'), row.get('Kategori'), row.get('Merk'), 
                     row.get('Model'), row.get('Warna'), row.get('Ukuran'), 
                     row.get('Stok Akhir'), row.get('Harga Average'), 
                     row.get('Harga Jual'), row.get('Nominal'), row.get('Harga Beli Akhir')
-                ])
-
-            # Auto-size columns
-            for col in ws.columns:
-                max_length = 0
-                column = col[0].column_letter
-                for cell in col:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-                adjusted_width = (max_length + 2)
-                ws.column_dimensions[column].width = adjusted_width
-
-            # Save to buffer
-            output = BytesIO()
-            wb.save(output)
-            output.seek(0)
+                ]
+            output = StokService.generate_excel_from_data("Stok Monitoring", headers, data, mapping_fn)
 
             filename = f"stok_monitoring_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
             return send_file(
@@ -666,46 +665,16 @@ class StokController:
 
             data = result['data']
             
-            # Create workbook
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "Barang Tanpa Transaksi"
-
-            # Headers
+            from app.Services.StokService import StokService
             headers = ['Kode Divisi', 'Kode Barang', 'Nama Barang', 'Stok Awal']
-            ws.append(headers)
-
-            # Style headers
-            for cell in ws[1]:
-                cell.font = Font(bold=True)
-                cell.alignment = Alignment(horizontal='center')
-
-            # Data rows
-            for row in data:
-                ws.append([
+            def mapping_fn(row):
+                return [
                     row.get('kd_divisi'), 
                     row.get('kd_barang'), 
                     row.get('nama_barang'),
                     row.get('stok_awal')
-                ])
-
-            # Auto-size columns
-            for col in ws.columns:
-                max_length = 0
-                column = col[0].column_letter
-                for cell in col:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-                adjusted_width = (max_length + 2)
-                ws.column_dimensions[column].width = adjusted_width
-
-            # Save to buffer
-            output = BytesIO()
-            wb.save(output)
-            output.seek(0)
+                ]
+            output = StokService.generate_excel_from_data("Barang Tanpa Transaksi", headers, data, mapping_fn)
 
             filename = f"barang_tanpa_transaksi_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
             return send_file(
@@ -739,45 +708,15 @@ class StokController:
 
             data = result['data']
             
-            # Create workbook
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "Barang Dengan Transaksi"
-
-            # Headers
+            from app.Services.StokService import StokService
             headers = ['Kode Divisi', 'Kode Barang', 'Nama Barang']
-            ws.append(headers)
-
-            # Style headers
-            for cell in ws[1]:
-                cell.font = Font(bold=True)
-                cell.alignment = Alignment(horizontal='center')
-
-            # Data rows
-            for row in data:
-                ws.append([
+            def mapping_fn(row):
+                return [
                     row.get('kd_divisi'), 
                     row.get('kd_barang'), 
                     row.get('nama_barang')
-                ])
-
-            # Auto-size columns
-            for col in ws.columns:
-                max_length = 0
-                column = col[0].column_letter
-                for cell in col:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-                adjusted_width = (max_length + 2)
-                ws.column_dimensions[column].width = adjusted_width
-
-            # Save to buffer
-            output = BytesIO()
-            wb.save(output)
-            output.seek(0)
+                ]
+            output = StokService.generate_excel_from_data("Barang Dengan Transaksi", headers, data, mapping_fn)
 
             filename = f"barang_dengan_transaksi_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
             return send_file(
@@ -896,46 +835,16 @@ class StokController:
 
             data = result['data']
             
-            # Create workbook
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "Stok Awal Semua Barang"
-
-            # Headers
+            from app.Services.StokService import StokService
             headers = ['Kode Divisi', 'Kode Barang', 'Nama Barang', 'Stok Awal']
-            ws.append(headers)
-
-            # Style headers
-            for cell in ws[1]:
-                cell.font = Font(bold=True)
-                cell.alignment = Alignment(horizontal='center')
-
-            # Data rows
-            for row in data:
-                ws.append([
+            def mapping_fn(row):
+                return [
                     row.get('kd_divisi'), 
                     row.get('kd_barang'), 
                     row.get('nama_barang'),
                     row.get('stok_awal')
-                ])
-
-            # Auto-size columns
-            for col in ws.columns:
-                max_length = 0
-                column = col[0].column_letter
-                for cell in col:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-                adjusted_width = (max_length + 2)
-                ws.column_dimensions[column].width = adjusted_width
-
-            # Save to buffer
-            output = BytesIO()
-            wb.save(output)
-            output.seek(0)
+                ]
+            output = StokService.generate_excel_from_data("Stok Awal Semua Barang", headers, data, mapping_fn)
 
             filename = f"semua_barang_stok_awal_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
             return send_file(

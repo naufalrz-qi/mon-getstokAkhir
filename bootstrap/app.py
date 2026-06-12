@@ -6,7 +6,7 @@ def create_app(config_name=None):
     """
     Flask app factory
     """
-    app = Flask(__name__, template_folder='../resources/views')
+    app = Flask(__name__, template_folder='../resources/views', static_folder='../static')
     
     # Load config
     config = get_config()

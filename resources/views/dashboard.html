@@ -1,0 +1,743 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard Bisnis{% endblock %}
+
+{% block extra_css %}
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Chart.js Plugin DataLabels -->
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+<style>
+    .dashboard-container {
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+    
+    .filter-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: var(--surface);
+        padding: 1rem 1.5rem;
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
+        border: 1px solid var(--border);
+    }
+    
+    .filter-group {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+    }
+
+    .kpi-card {
+        background: var(--surface);
+        padding: 1.5rem;
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
+        border: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .kpi-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 4px;
+    }
+    .kpi-card.blue::before { background: var(--primary); }
+    .kpi-card.green::before { background: var(--success); }
+    .kpi-card.purple::before { background: #8b5cf6; }
+    .kpi-card.orange::before { background: var(--warning); }
+    .kpi-card.red::before { background: var(--danger); }
+    .kpi-card.slate::before { background: #64748b; }
+
+    .kpi-title {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .kpi-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text);
+    }
+
+    .kpi-subtext {
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+
+    .chart-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+        gap: 1.5rem;
+    }
+
+    .chart-card {
+        background: var(--surface);
+        padding: 1.5rem;
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
+        border: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        min-height: 350px;
+    }
+
+    .chart-title {
+        font-size: 1rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .chart-container {
+        flex: 1;
+        position: relative;
+        width: 100%;
+    }
+
+    .table-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+        gap: 1.5rem;
+    }
+
+    .table-card {
+        background: var(--surface);
+        padding: 1.5rem;
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
+        border: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        max-height: 400px;
+        overflow: hidden;
+    }
+    
+    .table-card .chart-title {
+        margin-bottom: 0.5rem;
+    }
+
+    .table-responsive {
+        flex: 1;
+        overflow-y: auto;
+    }
+    
+    .dashboard-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.875rem;
+    }
+    
+    .dashboard-table th {
+        position: sticky;
+        top: 0;
+        background: var(--surface);
+        color: var(--text-muted);
+        font-weight: 600;
+        padding: 0.75rem 0.5rem;
+        text-align: left;
+        border-bottom: 2px solid var(--border);
+    }
+    
+    .dashboard-table td {
+        padding: 0.75rem 0.5rem;
+        border-bottom: 1px solid var(--border);
+        color: var(--text);
+    }
+
+    .dashboard-table tr:hover td {
+        background-color: var(--background);
+    }
+
+    .text-right { text-align: right !important; }
+    .text-center { text-align: center !important; }
+    
+    .badge {
+        padding: 0.25rem 0.5rem;
+        border-radius: var(--radius-sm);
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .badge-success { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+    .badge-warning { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+    .badge-danger { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+
+    /* Loading overlay */
+    #dashboard-loading {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(255, 255, 255, 0.8);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 50;
+        border-radius: var(--radius-lg);
+    }
+    .dark-mode #dashboard-loading {
+        background: rgba(15, 23, 42, 0.8);
+    }
+    .loading-spinner {
+        width: 40px; height: 40px;
+        border: 3px solid var(--border);
+        border-top-color: var(--primary);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 1rem;
+    }
+    
+    @media (max-width: 768px) {
+        .filter-bar {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 1rem;
+        }
+        .chart-grid, .table-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-container" style="position: relative;">
+    <div id="dashboard-loading">
+        <div class="loading-spinner"></div>
+        <div style="font-weight: 500;">Memuat Dashboard...</div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+        <div>
+            <h2 style="font-size: 1.25rem; font-weight: 700; margin: 0;">Dashboard Bisnis</h2>
+            <div style="color: var(--text-muted); font-size: 0.875rem; margin-top: 0.25rem;">
+                Server: <strong id="current-server-name">Loading...</strong>
+            </div>
+        </div>
+        <div class="filter-group">
+            <label for="filter-tahun" style="font-weight: 500;">Tahun:</label>
+            <select id="filter-tahun" class="form-input" style="width: auto; min-width: 100px;">
+                <!-- Akan diisi via JS -->
+            </select>
+            <button id="btn-refresh" class="btn btn-primary">
+                <i class="fas fa-sync-alt"></i> Muat Ulang
+            </button>
+        </div>
+    </div>
+
+    <!-- Error Alert -->
+    <div id="dashboard-error" class="alert alert-danger" style="display: none;"></div>
+
+    <!-- KPI Grid -->
+    <div class="kpi-grid">
+        <div class="kpi-card blue">
+            <div class="kpi-title">Omzet Penjualan</div>
+            <div class="kpi-value" id="kpi-penjualan">Rp 0</div>
+        </div>
+        <div class="kpi-card orange">
+            <div class="kpi-title">Total Pembelian</div>
+            <div class="kpi-value" id="kpi-pembelian">Rp 0</div>
+        </div>
+        <div class="kpi-card green">
+            <div class="kpi-title">Estimasi Laba Kotor</div>
+            <div class="kpi-value" id="kpi-laba">Rp 0</div>
+            <div class="kpi-subtext" id="kpi-margin" style="color: var(--success);">0% margin</div>
+        </div>
+        <div class="kpi-card purple">
+            <div class="kpi-title">Nilai Inventori</div>
+            <div class="kpi-value" id="kpi-inventori">Rp 0</div>
+        </div>
+        <div class="kpi-card slate">
+            <div class="kpi-title">SKU Aktif</div>
+            <div class="kpi-value" id="kpi-sku">0</div>
+        </div>
+        <div class="kpi-card red">
+            <div class="kpi-title">Stok Habis / Rendah</div>
+            <div class="kpi-value" id="kpi-stok-kritis">0 / 0</div>
+        </div>
+    </div>
+
+    <!-- Chart Grid 1: Penjualan & Inventori -->
+    <div class="chart-grid">
+        <div class="chart-card">
+            <div class="chart-title"><i class="fas fa-chart-bar text-primary"></i> Penjualan per Divisi</div>
+            <div class="chart-container">
+                <canvas id="chart-penjualan-divisi"></canvas>
+            </div>
+        </div>
+        <div class="chart-card">
+            <div class="chart-title"><i class="fas fa-store text-purple"></i> Nilai Inventori per Divisi</div>
+            <div class="chart-container">
+                <canvas id="chart-inventori-divisi"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart Grid 2: Donut Charts -->
+    <div class="chart-grid">
+        <div class="chart-card">
+            <div class="chart-title"><i class="fas fa-chart-pie text-success"></i> Top Kategori Terlaris (Qty)</div>
+            <div class="chart-container">
+                <canvas id="chart-kategori-laris"></canvas>
+            </div>
+        </div>
+        <div class="chart-card">
+            <div class="chart-title"><i class="fas fa-balance-scale text-warning"></i> Komposisi Transaksi (Rp)</div>
+            <div class="chart-container">
+                <canvas id="chart-komposisi"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Table Grid 1: Top Items -->
+    <div class="table-grid">
+        <div class="table-card">
+            <div class="chart-title"><i class="fas fa-trophy text-warning"></i> Top 10 Barang Terlaris</div>
+            <div class="table-responsive">
+                <table class="dashboard-table">
+                    <thead>
+                        <tr>
+                            <th>Barang</th>
+                            <th class="text-right">Qty</th>
+                            <th class="text-right">Omzet</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-terlaris">
+                        <!-- Filled by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="table-card">
+            <div class="chart-title"><i class="fas fa-gem text-success"></i> Top 10 Margin Terbaik</div>
+            <div class="table-responsive">
+                <table class="dashboard-table">
+                    <thead>
+                        <tr>
+                            <th>Barang</th>
+                            <th class="text-right">H.Avg</th>
+                            <th class="text-right">H.Jual</th>
+                            <th class="text-right">Margin</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-margin">
+                        <!-- Filled by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Table Grid 2: Warning Items -->
+    <div class="table-grid">
+        <div class="table-card">
+            <div class="chart-title"><i class="fas fa-exclamation-triangle text-danger"></i> Stok Kritis (Habis/Rendah)</div>
+            <div class="table-responsive">
+                <table class="dashboard-table">
+                    <thead>
+                        <tr>
+                            <th>Barang</th>
+                            <th>Kategori</th>
+                            <th class="text-right">Stok</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-kritis">
+                        <!-- Filled by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="table-card">
+            <div class="chart-title"><i class="fas fa-bed text-slate"></i> Dead Stock (Ada Stok, 0 Jual)</div>
+            <div class="table-responsive">
+                <table class="dashboard-table">
+                    <thead>
+                        <tr>
+                            <th>Barang</th>
+                            <th>Kategori</th>
+                            <th class="text-right">Stok</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-dead">
+                        <!-- Filled by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+// Register DataLabels plugin
+Chart.register(ChartDataLabels);
+
+// Formatting helpers
+const formatRp = (num) => {
+    if (!num) return 'Rp 0';
+    
+    // Short format for charts (e.g. 1.2M, 500K)
+    if (num >= 1000000000) return 'Rp ' + (num / 1000000000).toFixed(1) + 'M'; // Milyar -> M
+    if (num >= 1000000) return 'Rp ' + (num / 1000000).toFixed(1) + 'Jt'; // Juta -> Jt
+    if (num >= 1000) return 'Rp ' + (num / 1000).toFixed(1) + 'Rb'; // Ribu -> Rb
+    
+    return 'Rp ' + Math.round(num).toLocaleString('id-ID');
+};
+
+const formatRpFull = (num) => {
+    if (!num) return 'Rp 0';
+    return 'Rp ' + Math.round(num).toLocaleString('id-ID');
+};
+
+const formatNum = (num) => {
+    if (!num) return '0';
+    return Math.round(num).toLocaleString('id-ID');
+};
+
+// Global Chart Instances
+let charts = {};
+
+// Theme colors
+const colors = {
+    primary: '#3b82f6',
+    success: '#10b981',
+    warning: '#f59e0b',
+    danger: '#ef4444',
+    purple: '#8b5cf6',
+    teal: '#14b8a6',
+    slate: '#64748b',
+    pink: '#ec4899',
+    indigo: '#6366f1',
+    orange: '#f97316'
+};
+
+const colorPalette = Object.values(colors);
+
+// Common Chart Options
+const commonOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+        legend: {
+            labels: { color: 'var(--text)' }
+        },
+        datalabels: {
+            display: false // off by default
+        }
+    }
+};
+
+const initCharts = () => {
+    // 1. Penjualan per Divisi (Bar)
+    const ctxPenjualan = document.getElementById('chart-penjualan-divisi').getContext('2d');
+    charts.penjualan = new Chart(ctxPenjualan, {
+        type: 'bar',
+        data: { labels: [], datasets: [] },
+        options: {
+            ...commonOptions,
+            plugins: {
+                ...commonOptions.plugins,
+                legend: { display: false },
+                tooltip: {
+                    callbacks: { label: (ctx) => formatRpFull(ctx.raw) }
+                },
+                datalabels: {
+                    display: true,
+                    color: 'var(--text)',
+                    anchor: 'end',
+                    align: 'top',
+                    formatter: (val) => formatRp(val),
+                    font: { size: 10 }
+                }
+            },
+            scales: {
+                y: { 
+                    beginAtZero: true,
+                    ticks: { callback: (val) => formatRp(val), color: 'var(--text-muted)' },
+                    grid: { color: 'var(--border)' }
+                },
+                x: {
+                    ticks: { color: 'var(--text-muted)' },
+                    grid: { display: false }
+                }
+            }
+        }
+    });
+
+    // 2. Inventori per Divisi (Bar)
+    const ctxInventori = document.getElementById('chart-inventori-divisi').getContext('2d');
+    charts.inventori = new Chart(ctxInventori, {
+        type: 'bar',
+        data: { labels: [], datasets: [] },
+        options: {
+            ...commonOptions,
+            plugins: {
+                ...commonOptions.plugins,
+                legend: { display: false },
+                tooltip: {
+                    callbacks: { label: (ctx) => formatRpFull(ctx.raw) }
+                },
+                datalabels: {
+                    display: true,
+                    color: 'var(--text)',
+                    anchor: 'end',
+                    align: 'top',
+                    formatter: (val) => formatRp(val),
+                    font: { size: 10 }
+                }
+            },
+            scales: {
+                y: { 
+                    beginAtZero: true,
+                    ticks: { callback: (val) => formatRp(val), color: 'var(--text-muted)' },
+                    grid: { color: 'var(--border)' }
+                },
+                x: {
+                    ticks: { color: 'var(--text-muted)' },
+                    grid: { display: false }
+                }
+            }
+        }
+    });
+
+    // 3. Top Kategori Laris (Donut)
+    const ctxKategori = document.getElementById('chart-kategori-laris').getContext('2d');
+    charts.kategori = new Chart(ctxKategori, {
+        type: 'doughnut',
+        data: { labels: [], datasets: [] },
+        options: {
+            ...commonOptions,
+            plugins: {
+                ...commonOptions.plugins,
+                legend: { position: 'right' },
+                tooltip: {
+                    callbacks: { label: (ctx) => ` ${ctx.label}: ${formatNum(ctx.raw)} qty` }
+                }
+            },
+            cutout: '60%'
+        }
+    });
+
+    // 4. Komposisi Transaksi (Donut)
+    const ctxKomposisi = document.getElementById('chart-komposisi').getContext('2d');
+    charts.komposisi = new Chart(ctxKomposisi, {
+        type: 'doughnut',
+        data: { labels: [], datasets: [] },
+        options: {
+            ...commonOptions,
+            plugins: {
+                ...commonOptions.plugins,
+                legend: { position: 'bottom' },
+                tooltip: {
+                    callbacks: { label: (ctx) => ` ${ctx.label}: ${formatRpFull(ctx.raw)}` }
+                }
+            },
+            cutout: '50%'
+        }
+    });
+};
+
+const updateDashboard = async () => {
+    const loading = document.getElementById('dashboard-loading');
+    const errorDiv = document.getElementById('dashboard-error');
+    const tahun = document.getElementById('filter-tahun').value;
+    
+    loading.style.display = 'flex';
+    errorDiv.style.display = 'none';
+
+    try {
+        const res = await fetch(`/api/dashboard/summary?tahun=${tahun}`);
+        const json = await res.json();
+
+        if (json.status !== 'success') {
+            throw new Error(json.message || 'Gagal mengambil data dashboard');
+        }
+
+        const data = json.data;
+
+        // -- Update KPIs --
+        document.getElementById('kpi-penjualan').textContent = formatRpFull(data.kpi.total_penjualan);
+        document.getElementById('kpi-pembelian').textContent = formatRpFull(data.kpi.total_pembelian);
+        document.getElementById('kpi-laba').textContent = formatRpFull(data.kpi.laba_kotor);
+        document.getElementById('kpi-inventori').textContent = formatRpFull(data.kpi.nilai_inventori);
+        document.getElementById('kpi-sku').textContent = formatNum(data.kpi.total_sku);
+        document.getElementById('kpi-stok-kritis').textContent = `${formatNum(data.kpi.stok_habis)} / ${formatNum(data.kpi.stok_rendah)}`;
+
+        const marginEl = document.getElementById('kpi-margin');
+        marginEl.textContent = `${data.kpi.margin_persen}% margin`;
+        if (data.kpi.margin_persen < 0) {
+            marginEl.style.color = 'var(--danger)';
+        } else {
+            marginEl.style.color = 'var(--success)';
+        }
+
+        // -- Update Charts --
+        // 1. Penjualan per Divisi
+        charts.penjualan.data = {
+            labels: data.penjualan_per_divisi.map(d => d.divisi),
+            datasets: [{
+                data: data.penjualan_per_divisi.map(d => d.nilai),
+                backgroundColor: colors.primary,
+                borderRadius: 4
+            }]
+        };
+        charts.penjualan.update();
+
+        // 2. Inventori per Divisi
+        charts.inventori.data = {
+            labels: data.inventori_per_divisi.map(d => d.divisi),
+            datasets: [{
+                data: data.inventori_per_divisi.map(d => d.nilai),
+                backgroundColor: colors.purple,
+                borderRadius: 4
+            }]
+        };
+        charts.inventori.update();
+
+        // 3. Kategori Laris
+        charts.kategori.data = {
+            labels: data.top_kategori_laris.map(d => d.kategori || 'Tanpa Kategori'),
+            datasets: [{
+                data: data.top_kategori_laris.map(d => d.total_qty),
+                backgroundColor: colorPalette.slice(0, data.top_kategori_laris.length),
+                borderWidth: 2,
+                borderColor: 'var(--surface)'
+            }]
+        };
+        charts.kategori.update();
+
+        // 4. Komposisi
+        charts.komposisi.data = {
+            labels: Object.keys(data.komposisi_transaksi),
+            datasets: [{
+                data: Object.values(data.komposisi_transaksi),
+                backgroundColor: [colors.primary, colors.orange],
+                borderWidth: 2,
+                borderColor: 'var(--surface)'
+            }]
+        };
+        charts.komposisi.update();
+
+        // -- Update Tables --
+        const renderTable = (tbodyId, rows, renderer) => {
+            const tbody = document.getElementById(tbodyId);
+            if (!rows || rows.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="10" class="text-center text-muted">Tidak ada data</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = rows.map(renderer).join('');
+        };
+
+        // Top Terlaris
+        renderTable('tbody-terlaris', data.top_barang_terlaris, r => `
+            <tr>
+                <td>
+                    <div style="font-weight: 500;">${r.barang}</div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">${r.kategori}</div>
+                </td>
+                <td class="text-right font-mono">${formatNum(r.total_qty)}</td>
+                <td class="text-right font-mono" style="color: var(--success);">${formatRpFull(r.total_nominal)}</td>
+            </tr>
+        `);
+
+        // Top Margin
+        renderTable('tbody-margin', data.top_margin, r => `
+            <tr>
+                <td><div style="font-weight: 500;">${r.barang}</div></td>
+                <td class="text-right font-mono text-muted">${formatRpFull(r.harga_avg)}</td>
+                <td class="text-right font-mono">${formatRpFull(r.harga_jual)}</td>
+                <td class="text-right">
+                    <span class="badge badge-success">+${formatNum(r.margin_persen)}%</span>
+                </td>
+            </tr>
+        `);
+
+        // Stok Kritis
+        renderTable('tbody-kritis', data.stok_kritis, r => {
+            const badgeClass = r.stok_akhir <= 0 ? 'badge-danger' : 'badge-warning';
+            const label = r.stok_akhir <= 0 ? 'Habis' : 'Rendah';
+            return `
+            <tr>
+                <td>
+                    <div style="font-weight: 500;">${r.barang}</div>
+                </td>
+                <td class="text-muted">${r.kategori}</td>
+                <td class="text-right">
+                    <span class="badge ${badgeClass}" style="margin-right: 0.5rem;">${label}</span>
+                    <span class="font-mono font-bold">${formatNum(r.stok_akhir)}</span>
+                </td>
+            </tr>
+        `});
+
+        // Dead Stock
+        renderTable('tbody-dead', data.dead_stock, r => `
+            <tr>
+                <td><div style="font-weight: 500;">${r.barang}</div></td>
+                <td class="text-muted">${r.kategori}</td>
+                <td class="text-right font-mono font-bold text-danger">${formatNum(r.stok_akhir)}</td>
+            </tr>
+        `);
+
+    } catch (err) {
+        console.error(err);
+        errorDiv.textContent = err.message;
+        errorDiv.style.display = 'block';
+    } finally {
+        loading.style.display = 'none';
+    }
+};
+
+// Initialize
+document.addEventListener('DOMContentLoaded', async () => {
+    // Fill year select
+    const selectTahun = document.getElementById('filter-tahun');
+    const currentYear = new Date().getFullYear();
+    for (let y = currentYear + 1; y >= currentYear - 5; y--) {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = y;
+        if (y === currentYear) opt.selected = true;
+        selectTahun.appendChild(opt);
+    }
+
+    // Get current server name
+    try {
+        const res = await fetch('/stok/get-current-server');
+        const json = await res.json();
+        if (json.status === 'success' && json.server) {
+            document.getElementById('current-server-name').textContent = json.server.name;
+        }
+    } catch(e) {}
+
+    initCharts();
+    updateDashboard();
+
+    // Event listeners
+    document.getElementById('filter-tahun').addEventListener('change', updateDashboard);
+    document.getElementById('btn-refresh').addEventListener('click', updateDashboard);
+});
+</script>
+{% endblock %}
