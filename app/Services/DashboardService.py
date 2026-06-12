@@ -3,13 +3,25 @@ import sqlite3
 from collections import defaultdict
 from app.Services.Snapshot.SnapshotCore import SnapshotCore
 
+import time
+
 class DashboardService:
+    _cache = {}
+
     @classmethod
     def get_summary(cls, server_key, tahun=None):
         """
         Baca dari SQLite snapshot, return summary dashboard.
         Filter: tahun (default: None, berarti tidak ada filter khusus, tapi default kita ambil semua di SQLite)
         """
+        from app.Services.Snapshot.SnapshotState import SnapshotState
+        last_refresh = SnapshotState._mem_cache_ts.get(server_key, 0)
+        cache_key = f"{server_key}_{tahun}"
+        
+        cached = cls._cache.get(cache_key)
+        if cached and cached['ts'] >= last_refresh:
+            return cached['data']
+            
         db_path = SnapshotCore._db_path(server_key)
         if not os.path.exists(db_path):
             return {"error": "Snapshot belum ada. Silakan Refresh data terlebih dahulu."}
@@ -84,52 +96,50 @@ class DashboardService:
             
             total_penjualan = sum(row['total_nominal'] for row in rows_penjualan)
             
-            # Aggregate penjualan per divisi (perlu join dengan stok_snapshot untuk nama divisi)
+            # Aggregate penjualan (Python in-memory for speed)
             cursor.execute('''
-                SELECT s.divisi, SUM(p.total_nominal) as nilai
+                SELECT p.total_qty, p.total_nominal, s.divisi, s.barang, s.kategori, s.merk
                 FROM dashboard_penjualan p
-                JOIN stok_snapshot s ON p.kd_barang = s.kd_barang
+                LEFT JOIN stok_snapshot s ON p.kd_barang = s.kd_barang
                 {}
-                GROUP BY s.divisi
-                ORDER BY nilai DESC
             '''.format("WHERE p.tahun = ?" if tahun else ""), params)
-            penjualan_per_divisi = [dict(row) for row in cursor.fetchall()]
-
-            # Aggregate top barang terlaris
-            cursor.execute('''
-                SELECT s.barang, s.kategori, SUM(p.total_qty) as total_qty, SUM(p.total_nominal) as total_nominal
-                FROM dashboard_penjualan p
-                JOIN stok_snapshot s ON p.kd_barang = s.kd_barang
-                {}
-                GROUP BY s.barang, s.kategori
-                ORDER BY total_qty DESC
-                LIMIT 10
-            '''.format("WHERE p.tahun = ?" if tahun else ""), params)
-            top_barang_terlaris = [dict(row) for row in cursor.fetchall()]
+            rows_jual_joined = cursor.fetchall()
             
-            # Aggregate top kategori laris
-            cursor.execute('''
-                SELECT s.kategori, SUM(p.total_qty) as total_qty
-                FROM dashboard_penjualan p
-                JOIN stok_snapshot s ON p.kd_barang = s.kd_barang
-                {}
-                GROUP BY s.kategori
-                ORDER BY total_qty DESC
-                LIMIT 10
-            '''.format("WHERE p.tahun = ?" if tahun else ""), params)
-            top_kategori_laris = [dict(row) for row in cursor.fetchall()]
-
-            # Aggregate top merk laris
-            cursor.execute('''
-                SELECT s.merk, SUM(p.total_qty) as total_qty
-                FROM dashboard_penjualan p
-                JOIN stok_snapshot s ON p.kd_barang = s.kd_barang
-                {}
-                GROUP BY s.merk
-                ORDER BY total_qty DESC
-                LIMIT 10
-            '''.format("WHERE p.tahun = ?" if tahun else ""), params)
-            top_merk_laris = [dict(row) for row in cursor.fetchall()]
+            from collections import defaultdict
+            divisi_dict = defaultdict(float)
+            barang_dict = defaultdict(lambda: [0, 0])
+            kategori_dict = defaultdict(float)
+            merk_dict = defaultdict(float)
+            
+            for row in rows_jual_joined:
+                qty = row['total_qty'] or 0
+                nom = row['total_nominal'] or 0
+                div = row['divisi'] or 'Lainnya'
+                kat = row['kategori'] or 'Lainnya'
+                mrk = row['merk'] or 'Lainnya'
+                bar = row['barang'] or 'Lainnya'
+                
+                divisi_dict[div] += nom
+                b_key = (bar, kat)
+                barang_dict[b_key][0] += qty
+                barang_dict[b_key][1] += nom
+                kategori_dict[kat] += qty
+                merk_dict[mrk] += qty
+                
+            penjualan_per_divisi = [{'divisi': k, 'nilai': v} for k, v in divisi_dict.items()]
+            penjualan_per_divisi.sort(key=lambda x: x['nilai'], reverse=True)
+            
+            top_barang_terlaris = [{'barang': k[0], 'kategori': k[1], 'total_qty': v[0], 'total_nominal': v[1]} for k, v in barang_dict.items()]
+            top_barang_terlaris.sort(key=lambda x: x['total_qty'], reverse=True)
+            top_barang_terlaris = top_barang_terlaris[:10]
+            
+            top_kategori_laris = [{'kategori': k, 'total_qty': v} for k, v in kategori_dict.items()]
+            top_kategori_laris.sort(key=lambda x: x['total_qty'], reverse=True)
+            top_kategori_laris = top_kategori_laris[:10]
+            
+            top_merk_laris = [{'merk': k, 'total_qty': v} for k, v in merk_dict.items()]
+            top_merk_laris.sort(key=lambda x: x['total_qty'], reverse=True)
+            top_merk_laris = top_merk_laris[:10]
 
             # 3. Pembelian
             query_pembelian = "SELECT * FROM dashboard_pembelian"
@@ -169,7 +179,7 @@ class DashboardService:
                 "Pembelian": total_pembelian
             }
 
-            return {
+            result = {
                 "kpi": {
                     "total_penjualan": total_penjualan,
                     "total_pembelian": total_pembelian,
@@ -191,6 +201,12 @@ class DashboardService:
                 "stok_kritis": stok_kritis,
                 "dead_stock": dead_stock,
             }
+            
+            cls._cache[cache_key] = {
+                'ts': time.time(),
+                'data': result
+            }
+            return result
 
         except sqlite3.OperationalError as e:
             if "no such table" in str(e):
