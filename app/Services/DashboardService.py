@@ -265,24 +265,31 @@ class DashboardService:
                 continue
                 
             kpi = res['kpi']
-            for k in ["total_penjualan", "total_pembelian", "laba_kotor", "total_transaksi", "nilai_inventori", "total_sku", "stok_habis", "stok_rendah"]:
-                global_kpi[k] += kpi.get(k, 0)
-                
-            cabang_leaderboard.append({
-                'divisi': server_name,
-                'nilai': kpi.get('total_penjualan', 0)
-            })
             
-            for b in res.get('top_barang_terlaris', []):
-                k = (b['barang'], b['kategori'])
-                all_top_barang[k][0] += b['total_qty']
-                all_top_barang[k][1] += b['total_nominal']
+            # Jika tipe bukan gudang, tambahkan ke sales KPI dan leaderboard
+            if s.get('type') != 'gudang':
+                for k in ["total_penjualan", "total_pembelian", "laba_kotor", "total_transaksi"]:
+                    global_kpi[k] += kpi.get(k, 0)
+                    
+                cabang_leaderboard.append({
+                    'divisi': server_name,
+                    'nilai': kpi.get('total_penjualan', 0)
+                })
                 
-            for kat in res.get('top_kategori_laris', []):
-                all_top_kategori[kat['kategori']] += kat['total_qty']
-                
-            for mrk in res.get('top_merk_laris', []):
-                all_top_merk[mrk['merk']] += mrk['total_qty']
+                for b in res.get('top_barang_terlaris', []):
+                    k = (b['barang'], b['kategori'])
+                    all_top_barang[k][0] += b['total_qty']
+                    all_top_barang[k][1] += b['total_nominal']
+                    
+                for kat in res.get('top_kategori_laris', []):
+                    all_top_kategori[kat['kategori']] += kat['total_qty']
+                    
+                for mrk in res.get('top_merk_laris', []):
+                    all_top_merk[mrk['merk']] += mrk['total_qty']
+            
+            # Stok selalu digabungkan (baik gudang maupun grosir)
+            for k in ["nilai_inventori", "total_sku", "stok_habis", "stok_rendah"]:
+                global_kpi[k] += kpi.get(k, 0)
                 
             for ds in res.get('dead_stock', []):
                 ds['cabang'] = server_name

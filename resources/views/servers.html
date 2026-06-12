@@ -100,6 +100,7 @@
                         <select class="form-select form-select-sm" id="serverType" required>
                             <option value="grosir">Grosir (Margin 0)</option>
                             <option value="eceran">Eceran (Dengan Margin)</option>
+                            <option value="gudang">Gudang (Hanya Stok)</option>
                         </select>
                     </div>
 
@@ -174,7 +175,14 @@
         keys.forEach(key => {
             const s = servers[key];
             const tr = document.createElement('tr');
-            const typeClass = (s.type === 'eceran') ? 'background:var(--accent-bg);color:var(--accent);border:1px solid rgba(220,38,38,0.2)' : 'background:var(--info-bg);color:var(--info);border:1px solid rgba(45,127,249,0.2)';
+            
+            let typeClass = 'background:var(--info-bg);color:var(--info);border:1px solid rgba(45,127,249,0.2)'; // default grosir
+            if (s.type === 'eceran') {
+                typeClass = 'background:var(--accent-bg);color:var(--accent);border:1px solid rgba(220,38,38,0.2)';
+            } else if (s.type === 'gudang') {
+                typeClass = 'background:var(--warning-bg, #fff3cd);color:var(--warning, #856404);border:1px solid rgba(255,193,7,0.2)';
+            }
+            
             const dashboardBadge = (s.include_in_dashboard === false) ? '<br><span style="font-size:0.65rem; color:var(--text-muted);"><i class="fas fa-eye-slash"></i> Sembunyi dari Dashboard</span>' : '';
             
             tr.innerHTML = `
