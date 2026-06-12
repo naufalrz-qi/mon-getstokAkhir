@@ -42,24 +42,26 @@ def register_routes(app):
     login = AuthController.login_required
     admin = AuthController.admin_required
     superadmin = AuthController.super_admin_required
+    menu = AuthController.menu_required
 
     # ==========================================================
     # Web Routes (HTML Pages) — semua butuh login
     # ==========================================================
     Route.get('/', login(StokController.index_page))
     Route.get('/stok/index', login(StokController.index_page))
-    Route.get('/stok/', login(StokController.monitoring_page))
-    Route.get('/stok/histori', login(StokController.histori_page))
-    Route.get('/stok/opname', login(StokController.opname_page))
-    Route.get('/master/update-barang', login(StokController.update_barang_page))
+    Route.get('/stok/', menu('stok_index')(StokController.monitoring_page))
+    Route.get('/stok/histori', menu('stok_histori')(StokController.histori_page))
+    Route.get('/mon/transaksi', menu('stok_data_transaksi')(StokController.monitoring_transaksi_page))
+    Route.get('/stok/opname', menu('stok_opname')(StokController.opname_page))
+    Route.get('/master/update-barang', menu('master_update')(StokController.update_barang_page))
     Route.get('/stok/servers', superadmin(ServerController.servers_page))
     Route.get('/stok/mass-refresh', admin(StokController.mass_refresh_page))
 
     # API endpoints
-    Route.get('/stok/api/monitoring', login(StokController.fetch_monitoring_data))
-    Route.get('/stok/api/histori', login(StokController.fetch_barang_histori))
+    Route.get('/stok/api/monitoring', menu('stok_index')(StokController.fetch_monitoring_data))
+    Route.get('/stok/api/histori', menu('stok_histori')(StokController.fetch_barang_histori))
     Route.get('/master/api/barang', login(StokController.fetch_barang_data))
-    Route.post('/master/api/barang/update', login(StokController.update_barang))
+    Route.post('/master/api/barang/update', menu('master_update')(StokController.update_barang))
     # ==========================================================
     # API Routes : Authentication (publik untuk login/logout)
     # ==========================================================
@@ -105,18 +107,21 @@ def register_routes(app):
     # ==========================================================
     # API Routes : Stok Data (reads from local snapshot) — butuh login
     # ==========================================================
-    Route.get('/stok/monitoring', login(StokController.fetch_monitoring_data))
+    Route.get('/stok/monitoring', menu('stok_index')(StokController.fetch_monitoring_data))
     Route.get('/stok/api/divisi-list', login(StokController.fetch_divisi_list))
-    Route.get('/stok/api/opname', login(StokController.fetch_opname_data))
+    Route.get('/stok/api/opname', menu('stok_opname')(StokController.fetch_opname_data))
     Route.get('/stok/api/item-stock/<kd_barang>', login(StokController.fetch_item_stock_detail))
-    Route.get('/stok/barang-histori', login(StokController.fetch_barang_histori))
-    Route.get('/stok/barang-tanpa-transaksi', login(StokController.fetch_barang_tanpa_transaksi))
-    Route.get('/stok/semua-barang-stok-awal', login(StokController.fetch_semua_barang_stok_awal))
-    Route.get('/stok/export/histori', login(StokController.export_histori_xlsx))
-    Route.get('/stok/export/barang-tanpa-transaksi', login(StokController.export_barang_tanpa_transaksi_xlsx))
-    Route.get('/stok/export/semua-barang-stok-awal', login(StokController.export_semua_barang_stok_awal_xlsx))
-    Route.get('/stok/export/xlsx', login(StokController.export_xlsx))
-    Route.get('/stok/low-stock-alert', login(StokController.fetch_low_stock_alert))
+    Route.get('/stok/barang-histori', menu('stok_histori')(StokController.fetch_barang_histori))
+    Route.get('/stok/barang-tanpa-transaksi', menu('stok_data_transaksi')(StokController.fetch_barang_tanpa_transaksi))
+    Route.get('/stok/barang-dengan-transaksi', menu('stok_data_transaksi')(StokController.fetch_barang_dengan_transaksi))
+    Route.get('/stok/semua-barang-stok-awal', menu('stok_data_transaksi')(StokController.fetch_semua_barang_stok_awal))
+    Route.get('/stok/export/histori', menu('stok_histori')(StokController.export_histori_xlsx))
+    Route.get('/stok/export/barang-tanpa-transaksi', menu('stok_data_transaksi')(StokController.export_barang_tanpa_transaksi_xlsx))
+    Route.get('/stok/export/barang-dengan-transaksi', menu('stok_data_transaksi')(StokController.export_barang_dengan_transaksi_xlsx))
+    Route.get('/stok/export/bulk-transaksi', menu('stok_data_transaksi')(StokController.export_bulk_transaksi_xlsx))
+    Route.get('/stok/export/semua-barang-stok-awal', menu('stok_data_transaksi')(StokController.export_semua_barang_stok_awal_xlsx))
+    Route.get('/stok/export/xlsx', menu('stok_index')(StokController.export_xlsx))
+    Route.get('/stok/low-stock-alert', menu('stok_index')(StokController.fetch_low_stock_alert))
 
 
     # ==========================================================

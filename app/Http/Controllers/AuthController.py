@@ -140,6 +140,33 @@ class AuthController:
             return f(*args, **kwargs)
         return decorated_function
         
+    @staticmethod
+    def menu_required(menu_name):
+        """Decorator untuk proteksi rute berdasarkan akses menu (RBAC)"""
+        def decorator(f):
+            @wraps(f)
+            def decorated_function(*args, **kwargs):
+                if not session.get('username'):
+                    if request.is_json or request.path.startswith('/stok/api/') or request.path.startswith('/stok/snapshot/'):
+                        return jsonify({'status': 'error', 'message': 'Authentication required. Mohon login.'}), 401
+                    return redirect('/auth/login')
+                
+                # Super admin bisa akses semua menu
+                if session.get('role') == 'super_admin':
+                    return f(*args, **kwargs)
+                    
+                # User biasa cek daftar menu yang diizinkan
+                user_menus = session.get('menus', [])
+                if menu_name not in user_menus:
+                    if request.is_json or request.path.startswith('/stok/api/') or request.path.startswith('/stok/snapshot/'):
+                        return jsonify({'status': 'error', 'message': 'Akses Ditolak. Anda tidak memiliki izin ke menu ini.'}), 403
+                    # Fallback redirect to dashboard
+                    return redirect('/stok/')
+                    
+                return f(*args, **kwargs)
+            return decorated_function
+        return decorator
+
     # --- CRUD ADMIN ---
     
     @staticmethod

@@ -713,6 +713,12 @@
             {% endif %}
             {% endif %}
 
+            <!-- Transaksi -->
+            {% if session.get('role') == 'super_admin' or 'stok_data_transaksi' in session.get('menus', []) %}
+            <div class="sidebar-section-label">Transaksi</div>
+            <a href="/mon/transaksi" class="sidebar-nav-item"><i class="fas fa-file-invoice-dollar"></i><span>Monitoring Transaksi</span></a>
+            {% endif %}
+
             <!-- Data Master -->
             {% if session.get('role') == 'super_admin' or 'master_update' in session.get('menus', []) %}
             <div class="sidebar-section-label">Data Master</div>
