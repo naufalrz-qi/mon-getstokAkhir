@@ -252,6 +252,10 @@ class DashboardService:
         for s in servers:
             if s.get('type') in ['retail', 'eceran']:
                 continue
+            
+            # Abaikan jika user secara eksplisit mematikan opsi include_in_dashboard
+            if s.get('include_in_dashboard', True) is False:
+                continue
                 
             server_key = s['key']
             server_name = s['name']

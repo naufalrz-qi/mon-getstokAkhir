@@ -103,6 +103,15 @@
                         </select>
                     </div>
 
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="includeInDashboard" checked>
+                            <label class="form-check-label" for="includeInDashboard" style="font-size: 0.85rem; font-weight: 500;">
+                                Tampilkan di Global Dashboard
+                            </label>
+                        </div>
+                    </div>
+
                     <div>
                         <label class="form-label">Kredensial</label>
                         <div class="row g-2">
@@ -166,9 +175,11 @@
             const s = servers[key];
             const tr = document.createElement('tr');
             const typeClass = (s.type === 'eceran') ? 'background:var(--accent-bg);color:var(--accent);border:1px solid rgba(220,38,38,0.2)' : 'background:var(--info-bg);color:var(--info);border:1px solid rgba(45,127,249,0.2)';
+            const dashboardBadge = (s.include_in_dashboard === false) ? '<br><span style="font-size:0.65rem; color:var(--text-muted);"><i class="fas fa-eye-slash"></i> Sembunyi dari Dashboard</span>' : '';
+            
             tr.innerHTML = `
                 <td><span class="badge-glass">${key}</span></td>
-                <td style="font-weight:600;color:var(--accent-light)">${s.name}</td>
+                <td style="font-weight:600;color:var(--accent-light)">${s.name}${dashboardBadge}</td>
                 <td><span style="display:inline-block;padding:0.2rem 0.5rem;border-radius:12px;font-size:0.68rem;font-weight:600;text-transform:uppercase;${typeClass}">${s.type || 'grosir'}</span></td>
                 <td><i class="fas fa-globe fa-xs" style="color:var(--text-muted)"></i> ${s.host}</td>
                 <td>${s.port}</td>
@@ -186,6 +197,7 @@
         document.getElementById('serverForm').reset();
         document.getElementById('isEdit').value = '0';
         document.getElementById('key').readOnly = false;
+        document.getElementById('includeInDashboard').checked = true;
         document.getElementById('modalTitle').textContent = 'Tambah Server';
         serverModal.show();
     }
@@ -197,6 +209,14 @@
         document.getElementById('key').readOnly = true;
         document.getElementById('name').value = s.name;
         document.getElementById('serverType').value = s.type || 'grosir';
+        
+        // Handle include_in_dashboard backwards compatibility
+        if (s.include_in_dashboard === undefined) {
+            document.getElementById('includeInDashboard').checked = true;
+        } else {
+            document.getElementById('includeInDashboard').checked = s.include_in_dashboard;
+        }
+
         document.getElementById('host').value = s.host;
         document.getElementById('port').value = s.port;
         document.getElementById('database').value = s.database;
@@ -212,6 +232,7 @@
         const data = {
             key, name: document.getElementById('name').value.trim(),
             type: document.getElementById('serverType').value,
+            include_in_dashboard: document.getElementById('includeInDashboard').checked,
             host: document.getElementById('host').value.trim(),
             port: document.getElementById('port').value.trim(),
             database: document.getElementById('database').value.trim(),
