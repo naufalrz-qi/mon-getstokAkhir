@@ -1691,6 +1691,265 @@ class SnapshotManager:
             return {'status': 'error', 'message': str(e)}
 
     @classmethod
+    def get_barang_dengan_transaksi(cls, server_key, jenis_transaksi='Semua', start_year=None, end_year=None):
+        """
+        Fetch items that have transactions of a specific type within a year range.
+        """
+        from app.Models.Database import db_manager
+        from datetime import datetime
+
+        if not start_year:
+            start_year = str(datetime.now().year)
+        if not end_year:
+            end_year = str(datetime.now().year)
+            
+        start_date = f"{start_year}-01-01 00:00:00"
+        end_date = f"{end_year}-12-31 23:59:59"
+
+        cte_parts = []
+        
+        if jenis_transaksi in ('Semua', 'Mutasi Keluar'):
+            cte_parts.append("""
+            SELECT t.kd_divisi_asal AS kd_divisi, d.kd_barang
+            FROM t_mutasi_stok_detail d (NOLOCK)
+            INNER JOIN t_mutasi_stok t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+            WHERE t.tanggal BETWEEN @StartDate AND @EndDate
+            """)
+            
+        if jenis_transaksi in ('Semua', 'Mutasi Masuk'):
+            cte_parts.append("""
+            SELECT t.kd_divisi_tujuan AS kd_divisi, d.kd_barang
+            FROM t_mutasi_stok_detail d (NOLOCK)
+            INNER JOIN t_mutasi_stok t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+            WHERE t.tanggal BETWEEN @StartDate AND @EndDate
+            """)
+            
+        if jenis_transaksi in ('Semua', 'Opname', 'Opname Masuk'):
+            cond = " AND status = 2" if jenis_transaksi == 'Opname Masuk' else ""
+            cte_parts.append(f"""
+            SELECT kd_divisi, kd_barang
+            FROM t_opname_stok (NOLOCK)
+            WHERE tanggal BETWEEN @StartDate AND @EndDate{cond}
+            """)
+            
+        if jenis_transaksi == 'Opname Keluar':
+            cte_parts.append("""
+            SELECT kd_divisi, kd_barang
+            FROM t_opname_stok (NOLOCK)
+            WHERE tanggal BETWEEN @StartDate AND @EndDate AND status <> 2
+            """)
+            
+        if jenis_transaksi in ('Semua', 'Pembelian'):
+            cte_parts.append("""
+            SELECT t.kd_divisi, d.kd_barang
+            FROM t_pembelian_detail d (NOLOCK)
+            INNER JOIN t_pembelian t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+            WHERE t.tanggal BETWEEN @StartDate AND @EndDate AND t.status IN (0, 1)
+            """)
+            
+        if jenis_transaksi in ('Semua', 'Retur Pembelian'):
+            cte_parts.append("""
+            SELECT t.kd_divisi, d.kd_barang
+            FROM t_pembelian_retur_detail d (NOLOCK)
+            INNER JOIN t_pembelian_retur t (NOLOCK) ON d.no_retur = t.no_retur
+            WHERE t.tanggal BETWEEN @StartDate AND @EndDate
+            """)
+            
+        if jenis_transaksi in ('Semua', 'Penjualan'):
+            cte_parts.append("""
+            SELECT t.kd_divisi, d.kd_barang
+            FROM t_penjualan_detail d (NOLOCK)
+            INNER JOIN t_penjualan t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+            INNER JOIN m_barang b (NOLOCK) ON d.kd_barang = b.kd_barang
+            INNER JOIN m_kategori k (NOLOCK) ON b.kd_kategori = k.kd_kategori
+            WHERE t.tanggal BETWEEN @StartDate AND @EndDate AND k.status <> 2
+            """)
+            
+        if jenis_transaksi in ('Semua', 'Retur Penjualan'):
+            cte_parts.append("""
+            SELECT t.kd_divisi, d.kd_barang
+            FROM t_penjualan_retur_detail d (NOLOCK)
+            INNER JOIN t_penjualan_retur t (NOLOCK) ON d.no_retur = t.no_retur
+            WHERE t.tanggal BETWEEN @StartDate AND @EndDate
+            """)
+
+        union_query = " UNION ALL ".join(cte_parts)
+        
+        query = f"""
+        DECLARE @StartDate DATETIME = '{start_date}';
+        DECLARE @EndDate DATETIME = '{end_date}';
+        
+        WITH cte_transaksi AS (
+            {union_query}
+        )
+        SELECT 
+            ct.kd_divisi,
+            ct.kd_barang,
+            MAX(b.nama) AS nama_barang
+        FROM cte_transaksi ct
+        INNER JOIN m_barang b (NOLOCK) ON ct.kd_barang = b.kd_barang
+        GROUP BY ct.kd_divisi, ct.kd_barang
+        ORDER BY ct.kd_divisi, ct.kd_barang;
+        """
+        
+        try:
+            results = db_manager.execute_query(server_key, query)
+            return {'status': 'success', 'data': results}
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    @classmethod
+    def get_bulk_transaksi_detail(cls, server_key, jenis_transaksi='Semua', start_year=None, end_year=None):
+        """
+        Fetch ALL detail transaction rows for a specific type within a year range.
+        Used for bulk export.
+        """
+        from app.Models.Database import db_manager
+        from datetime import datetime
+
+        if not start_year:
+            start_year = str(datetime.now().year)
+        if not end_year:
+            end_year = str(datetime.now().year)
+            
+        start_date = f"{start_year}-01-01 00:00:00"
+        end_date = f"{end_year}-12-31 23:59:59"
+
+        cte_parts = []
+        
+        if jenis_transaksi in ('Semua', 'Mutasi Keluar'):
+            cte_parts.append("""
+            SELECT t.kd_divisi_asal AS kd_divisi, d.kd_barang, t.tanggal, 'Mutasi Keluar' AS jenis_transaksi, d.no_transaksi, d.qty, d.kd_satuan, 0.0 AS harga
+            FROM t_mutasi_stok_detail d (NOLOCK)
+            INNER JOIN t_mutasi_stok t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+            WHERE t.tanggal BETWEEN @StartDate AND @EndDate
+            """)
+            
+        if jenis_transaksi in ('Semua', 'Mutasi Masuk'):
+            cte_parts.append("""
+            SELECT t.kd_divisi_tujuan AS kd_divisi, d.kd_barang, t.tanggal, 'Mutasi Masuk' AS jenis_transaksi, d.no_transaksi, d.qty, d.kd_satuan, 0.0 AS harga
+            FROM t_mutasi_stok_detail d (NOLOCK)
+            INNER JOIN t_mutasi_stok t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+            WHERE t.tanggal BETWEEN @StartDate AND @EndDate
+            """)
+            
+        if jenis_transaksi in ('Semua', 'Opname', 'Opname Masuk'):
+            cond = " AND status = 2" if jenis_transaksi == 'Opname Masuk' else (" AND status = 2" if jenis_transaksi == 'Semua' else "")
+            if jenis_transaksi in ('Semua', 'Opname', 'Opname Masuk'):
+                cte_parts.append(f"""
+                SELECT kd_divisi, kd_barang, tanggal, 'Opname Masuk' AS jenis_transaksi, no_transaksi, qty, kd_satuan, 0.0 AS harga
+                FROM t_opname_stok (NOLOCK)
+                WHERE tanggal BETWEEN @StartDate AND @EndDate AND status = 2
+                """)
+            
+        if jenis_transaksi in ('Semua', 'Opname', 'Opname Keluar'):
+            cte_parts.append(f"""
+            SELECT kd_divisi, kd_barang, tanggal, 'Opname Keluar' AS jenis_transaksi, no_transaksi, qty, kd_satuan, 0.0 AS harga
+            FROM t_opname_stok (NOLOCK)
+            WHERE tanggal BETWEEN @StartDate AND @EndDate AND status <> 2
+            """)
+            
+        if jenis_transaksi in ('Semua', 'Pembelian'):
+            cte_parts.append("""
+            SELECT t.kd_divisi, d.kd_barang, t.tanggal, 'Pembelian' AS jenis_transaksi, d.no_transaksi, d.qty, d.kd_satuan, d.harga_beli AS harga
+            FROM t_pembelian_detail d (NOLOCK)
+            INNER JOIN t_pembelian t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+            WHERE t.tanggal BETWEEN @StartDate AND @EndDate AND t.status IN (0, 1)
+            """)
+            
+        if jenis_transaksi in ('Semua', 'Retur Pembelian'):
+            cte_parts.append("""
+            SELECT t.kd_divisi, d.kd_barang, t.tanggal, 'Retur Pembelian' AS jenis_transaksi, d.no_retur AS no_transaksi, d.qty, d.kd_satuan, d.harga AS harga
+            FROM t_pembelian_retur_detail d (NOLOCK)
+            INNER JOIN t_pembelian_retur t (NOLOCK) ON d.no_retur = t.no_retur
+            WHERE t.tanggal BETWEEN @StartDate AND @EndDate
+            """)
+            
+        if jenis_transaksi in ('Semua', 'Penjualan'):
+            cte_parts.append("""
+            SELECT t.kd_divisi, d.kd_barang, t.tanggal, 'Penjualan' AS jenis_transaksi, d.no_transaksi, d.qty, d.kd_satuan, d.harga_jual AS harga
+            FROM t_penjualan_detail d (NOLOCK)
+            INNER JOIN t_penjualan t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+            INNER JOIN m_barang b (NOLOCK) ON d.kd_barang = b.kd_barang
+            INNER JOIN m_kategori k (NOLOCK) ON b.kd_kategori = k.kd_kategori
+            WHERE t.tanggal BETWEEN @StartDate AND @EndDate AND k.status <> 2
+            """)
+            
+        if jenis_transaksi in ('Semua', 'Retur Penjualan'):
+            cte_parts.append("""
+            SELECT t.kd_divisi, d.kd_barang, t.tanggal, 'Retur Penjualan' AS jenis_transaksi, d.no_retur AS no_transaksi, d.qty, d.kd_satuan, d.harga_jual AS harga
+            FROM t_penjualan_retur_detail d (NOLOCK)
+            INNER JOIN t_penjualan_retur t (NOLOCK) ON d.no_retur = t.no_retur
+            WHERE t.tanggal BETWEEN @StartDate AND @EndDate
+            """)
+
+        union_query = " UNION ALL ".join(cte_parts)
+        
+        query = f"""
+        DECLARE @StartDate DATETIME = '{start_date}';
+        DECLARE @EndDate DATETIME = '{end_date}';
+        
+        WITH cte_transaksi AS (
+            {union_query}
+        )
+        SELECT 
+            ct.kd_divisi,
+            div.keterangan AS nama_divisi,
+            ct.kd_barang,
+            b.nama AS nama_barang,
+            ct.tanggal,
+            ct.jenis_transaksi,
+            ct.no_transaksi,
+            ct.qty,
+            ct.kd_satuan,
+            s.nama AS nama_satuan,
+            ct.harga
+        FROM cte_transaksi ct
+        INNER JOIN m_barang b (NOLOCK) ON ct.kd_barang = b.kd_barang
+        LEFT JOIN m_divisi div (NOLOCK) ON ct.kd_divisi = div.kd_divisi
+        LEFT JOIN m_satuan s (NOLOCK) ON ct.kd_satuan = s.kd_satuan
+        ORDER BY ct.tanggal ASC;
+        """
+        
+        try:
+            results = db_manager.execute_query(server_key, query)
+            return {'status': 'success', 'data': results}
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    @classmethod
+    def get_semua_barang_stok_awal(cls, server_key, stok_filter='all'):
+        """
+        Fetch ALL items with their initial stock (stok_awal).
+        stok_filter options: 'gt_zero' (> 0), 'gte_zero' (>= 0), 'all' (no filter)
+        """
+        from app.Models.Database import db_manager
+        
+        stok_condition = ""
+        if stok_filter == 'gt_zero':
+            stok_condition = "WHERE bd.stok_awal > 0"
+        elif stok_filter == 'gte_zero':
+            stok_condition = "WHERE bd.stok_awal >= 0"
+
+        query = f"""
+        SELECT 
+            bd.kd_divisi,
+            bd.kd_barang,
+            b.nama AS nama_barang,
+            bd.stok_awal
+        FROM m_barang_divisi bd (NOLOCK)
+        INNER JOIN m_barang b (NOLOCK) ON bd.kd_barang = b.kd_barang
+        {stok_condition}
+        ORDER BY bd.kd_divisi, bd.kd_barang;
+        """
+        
+        try:
+            results = db_manager.execute_query(server_key, query)
+            return {'status': 'success', 'data': results}
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    @classmethod
     def get_barang_histori(cls, server_key, kd_barang, kd_divisi, start_date=None, end_date=None):
         """
         Fetch transaction history for ONE item (optional division) from MSSQL.

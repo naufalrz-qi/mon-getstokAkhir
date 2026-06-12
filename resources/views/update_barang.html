@@ -13,7 +13,7 @@
         font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
     }
     .server-type-badge.grosir { background: var(--info-bg); color: var(--info); border: 1px solid rgba(45,127,249,0.2); }
-    .server-type-badge.eceran { background: var(--accent-bg); color: var(--accent); border: 1px solid rgba(232,114,12,0.2); }
+    .server-type-badge.eceran { background: var(--accent-bg); color: var(--accent); border: 1px solid rgba(220,38,38,0.2); }
 
     /* Stats */
     .harga-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.25rem; }
@@ -28,24 +28,25 @@
         animation: cardSlideUp 0.4s ease forwards; opacity: 0;
     }
     @keyframes cardSlideUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
-    .harga-card:hover { box-shadow: var(--shadow-md); transform: translateY(-4px); border-color: #d6cdc3; }
+    .harga-card:hover { box-shadow: var(--shadow-md); transform: translateY(-4px); border-color: var(--border-light); }
     .harga-card::before {
         content:''; position:absolute; top:0; left:0; right:0; height:3px;
         background: linear-gradient(90deg, var(--accent), var(--accent-light));
         transform: scaleX(0); transition: transform 0.25s;
     }
     .harga-card:hover::before { transform: scaleX(1); }
-    .harga-card.edit-mode { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(232,114,12,0.12); }
+    .harga-card.edit-mode { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(220,38,38,0.12); }
     .harga-card.inactive { opacity: 0.8; filter: grayscale(40%); }
     .harga-card.inactive:hover { opacity: 1; filter: none; }
 
-    .harga-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.6rem; }
+    .harga-card-header { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.6rem; }
     .harga-card-code {
         font-size: 0.68rem; font-weight: 700; color: var(--accent);
         background: var(--accent-bg); padding: 0.2rem 0.6rem; border-radius: var(--radius-xs); letter-spacing: 0.04em;
+        align-self: flex-start;
     }
     
-    .status-badges { display: flex; flex-direction: row; gap: 0.25rem; align-items: center; }
+    .status-badges { display: flex; flex-direction: row; gap: 0.25rem; align-items: center; flex-wrap: wrap; }
     .status-badge {
         display: inline-flex; align-items: center; gap: 0.25rem;
         padding: 0.2rem 0.4rem; border-radius: var(--radius-xs);
@@ -94,7 +95,7 @@
 
     .edit-preview {
         margin-top: 0.75rem; padding: 0.75rem; background: var(--accent-bg);
-        border-radius: var(--radius-sm); border: 1px solid rgba(232,114,12,0.15);
+        border-radius: var(--radius-sm); border: 1px solid rgba(220,38,38,0.15);
     }
     .edit-preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.78rem; }
     .preview-label { font-size: 0.6rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; }
@@ -102,7 +103,7 @@
 
     .edit-actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
     .edit-actions button { flex:1; padding:0.5rem; border:none; border-radius:var(--radius-sm); font-weight:600; cursor:pointer; transition:all 0.15s; font-size:0.78rem; }
-    .btn-edit { background:var(--accent-bg); color:var(--accent); border:1px solid rgba(232,114,12,0.2) !important; }
+    .btn-edit { background:var(--accent-bg); color:var(--accent); border:1px solid rgba(220,38,38,0.2) !important; }
     .btn-edit:hover { background:var(--accent); color:#fff; }
     .btn-save { background:var(--success); color:#fff; }
     .btn-save:hover { background:#1a8f5a; }

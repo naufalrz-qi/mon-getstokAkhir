@@ -14,7 +14,7 @@
         border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-sm);
     }
     .table thead th {
-        background: #faf7f4; color: var(--text-secondary);
+        background: var(--table-header-bg); color: var(--text-secondary);
         text-transform: uppercase; font-size: 0.65rem; letter-spacing: 0.05em;
         padding: 0.75rem; border-bottom: 2px solid var(--border-light);
         white-space: nowrap; cursor: pointer; transition: background 0.15s;
@@ -22,7 +22,7 @@
     .table thead th:hover { background: var(--accent-bg); }
     .table thead th i.sort-icon { margin-left: 5px; font-size: 0.6rem; opacity: 0.4; }
     .table thead th.active i.sort-icon { opacity: 1; color: var(--accent); }
-    .table td { padding: 0.6rem 0.75rem; border-bottom: 1px solid #f3ede7; font-size: 0.78rem; vertical-align: middle; }
+    .table td { padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--table-row-border); font-size: 0.78rem; vertical-align: middle; }
     .saldo-badge { font-weight: 700; color: var(--accent); background: var(--accent-bg); padding: 0.2rem 0.5rem; border-radius: var(--radius-xs); }
     .empty-state { padding: 4rem 2rem; text-align: center; color: var(--text-muted); }
     .empty-icon { font-size: 3rem; margin-bottom: 1.5rem; opacity: 0.3; color: var(--accent); }
@@ -81,11 +81,6 @@
                     <i class="fas fa-search me-1"></i> Cari
                 </button>
             </div>
-            <div class="col-md-12 mt-2">
-                <button class="btn btn-outline-primary btn-sm" onclick="openTanpaTransaksiModal()">
-                    <i class="fas fa-box-open me-1"></i> Tampilkan Barang Tanpa Transaksi (Stok Awal Saja)
-                </button>
-            </div>
         </div>
         <div class="row g-3 mt-1">
              <div class="col-md-auto d-flex align-items-center">
@@ -137,7 +132,7 @@
                     <tbody id="histori-tbody">
                         <!-- Data rows here -->
                     </tbody>
-                    <tfoot class="total-row sticky-bottom" style="background: #faf7f4;">
+                    <tfoot class="total-row sticky-bottom" style="background: var(--table-header-bg);">
                         <tr>
                             <td colspan="7" class="text-end">TOTAL (TERFILTER)</td>
                             <td class="text-end text-success" id="total-debet">0</td>
@@ -165,62 +160,6 @@
     </div>
 </div>
 
-<!-- Modal Barang Tanpa Transaksi -->
-<div class="modal fade" id="modalTanpaTransaksi" tabindex="-1">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="fas fa-box-open me-2 text-primary"></i>Barang Tanpa Transaksi</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="d-flex justify-content-between mb-3 align-items-center">
-                    <p class="mb-0 text-muted" style="font-size:0.85rem">
-                        Daftar barang yang tidak ada transaksi setelah tutup buku.
-                    </p>
-                    <div class="d-flex gap-2">
-                        <select id="select-stok-filter-tanpa-transaksi" class="form-select form-select-sm" onchange="reloadTanpaTransaksi()">
-                            <option value="all">Semua Stok Awal</option>
-                            <option value="gte_zero">Stok Awal &ge; 0</option>
-                            <option value="gt_zero">Stok Awal &gt; 0</option>
-                        </select>
-                        <button class="btn btn-sm btn-success text-nowrap" onclick="exportTanpaTransaksiXlsx()">
-                            <i class="fas fa-file-excel me-1"></i> Export XLSX
-                        </button>
-                    </div>
-                </div>
-                
-                <div id="loading-tanpa-transaksi" class="text-center py-4" style="display:none;">
-                    <div class="spinner-border text-primary" role="status"></div>
-                    <p class="mt-2 text-muted">Memindai database...</p>
-                </div>
-
-                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-                    <table class="table table-hover table-sm" id="table-tanpa-transaksi" style="display:none;">
-                        <thead class="sticky-top bg-white">
-                            <tr>
-                                <th>Divisi</th>
-                                <th>Kode Barang</th>
-                                <th>Nama Barang</th>
-                                <th class="text-end">Stok Awal</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tbody-tanpa-transaksi">
-                        </tbody>
-                    </table>
-                </div>
-                
-                <div id="pagination-tanpa-transaksi-container" class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top" style="display:none;">
-                    <div class="text-muted" style="font-size: 0.85rem;" id="info-total-tanpa-transaksi">Total Data: 0</div>
-                    <nav>
-                        <ul class="pagination pagination-sm mb-0" id="ul-pagination-tanpa-transaksi">
-                        </ul>
-                    </nav>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -508,147 +447,6 @@
         });
     }
 
-    // Modal Barang Tanpa Transaksi
-    let modalTanpaTransaksiInstance = null;
-    let dataTanpaTransaksi = [];
-    let currentPageTanpaTransaksi = 1;
-    const itemsPerPageTanpaTransaksi = 100;
-    
-    function openTanpaTransaksiModal() {
-        if (!modalTanpaTransaksiInstance) {
-            modalTanpaTransaksiInstance = new bootstrap.Modal(document.getElementById('modalTanpaTransaksi'));
-        }
-        modalTanpaTransaksiInstance.show();
-        reloadTanpaTransaksi();
-    }
-    
-    function reloadTanpaTransaksi() {
-        document.getElementById('table-tanpa-transaksi').style.display = 'none';
-        document.getElementById('pagination-tanpa-transaksi-container').style.display = 'none';
-        document.getElementById('loading-tanpa-transaksi').style.display = 'block';
-        
-        const stokFilter = document.getElementById('select-stok-filter-tanpa-transaksi').value;
-        
-        fetch(`/stok/barang-tanpa-transaksi?stok_filter=${stokFilter}`)
-            .then(r => r.json())
-            .then(res => {
-                if (res.status === 'success') {
-                    dataTanpaTransaksi = res.data || [];
-                    currentPageTanpaTransaksi = 1;
-                    renderTanpaTransaksiPage();
-                } else {
-                    showAlert('danger', 'Gagal memuat daftar barang: ' + res.message);
-                    if (modalTanpaTransaksiInstance) modalTanpaTransaksiInstance.hide();
-                }
-            })
-            .catch(err => {
-                showAlert('danger', 'Koneksi gagal: ' + err.message);
-                if (modalTanpaTransaksiInstance) modalTanpaTransaksiInstance.hide();
-            })
-            .finally(() => {
-                document.getElementById('loading-tanpa-transaksi').style.display = 'none';
-            });
-    }
 
-    function renderTanpaTransaksiPage() {
-        const tbody = document.getElementById('tbody-tanpa-transaksi');
-        tbody.innerHTML = '';
-        
-        document.getElementById('info-total-tanpa-transaksi').innerHTML = `Total Data: <strong>${dataTanpaTransaksi.length}</strong>`;
-        
-        if (dataTanpaTransaksi.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-4">Tidak ada barang tanpa transaksi</td></tr>`;
-            document.getElementById('ul-pagination-tanpa-transaksi').innerHTML = '';
-        } else {
-            const startIndex = (currentPageTanpaTransaksi - 1) * itemsPerPageTanpaTransaksi;
-            const endIndex = Math.min(startIndex + itemsPerPageTanpaTransaksi, dataTanpaTransaksi.length);
-            const pageData = dataTanpaTransaksi.slice(startIndex, endIndex);
-            
-            pageData.forEach(row => {
-                const tr = document.createElement('tr');
-                tr.style.cursor = 'pointer';
-                tr.onclick = () => selectTanpaTransaksi(row.kd_barang, row.kd_divisi);
-                
-                tr.innerHTML = `
-                    <td>${row.kd_divisi || '-'}</td>
-                    <td><span class="badge-glass">${row.kd_barang}</span></td>
-                    <td>${row.nama_barang || '-'}</td>
-                    <td class="text-end fw-bold text-primary">${row.stok_awal}</td>
-                `;
-                tbody.appendChild(tr);
-            });
-            
-            renderTanpaTransaksiPagination();
-        }
-        document.getElementById('table-tanpa-transaksi').style.display = 'table';
-        document.getElementById('pagination-tanpa-transaksi-container').style.display = 'flex';
-    }
-
-    function renderTanpaTransaksiPagination() {
-        const totalPages = Math.ceil(dataTanpaTransaksi.length / itemsPerPageTanpaTransaksi);
-        const ul = document.getElementById('ul-pagination-tanpa-transaksi');
-        ul.innerHTML = '';
-        
-        if (totalPages <= 1) return;
-        
-        // Prev button
-        ul.innerHTML += `<li class="page-item ${currentPageTanpaTransaksi === 1 ? 'disabled' : ''}">
-            <a class="page-link" href="#" onclick="changeTanpaTransaksiPage(${currentPageTanpaTransaksi - 1}); return false;">&laquo;</a>
-        </li>`;
-        
-        // Page numbers
-        let startPage = Math.max(1, currentPageTanpaTransaksi - 2);
-        let endPage = Math.min(totalPages, startPage + 4);
-        
-        if (endPage - startPage < 4) {
-            startPage = Math.max(1, endPage - 4);
-        }
-        
-        if (startPage > 1) {
-            ul.innerHTML += `<li class="page-item"><a class="page-link" href="#" onclick="changeTanpaTransaksiPage(1); return false;">1</a></li>`;
-            if (startPage > 2) {
-                ul.innerHTML += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
-            }
-        }
-        
-        for (let i = startPage; i <= endPage; i++) {
-            ul.innerHTML += `<li class="page-item ${i === currentPageTanpaTransaksi ? 'active' : ''}">
-                <a class="page-link" href="#" onclick="changeTanpaTransaksiPage(${i}); return false;">${i}</a>
-            </li>`;
-        }
-        
-        if (endPage < totalPages) {
-            if (endPage < totalPages - 1) {
-                ul.innerHTML += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
-            }
-            ul.innerHTML += `<li class="page-item"><a class="page-link" href="#" onclick="changeTanpaTransaksiPage(${totalPages}); return false;">${totalPages}</a></li>`;
-        }
-        
-        // Next button
-        ul.innerHTML += `<li class="page-item ${currentPageTanpaTransaksi === totalPages ? 'disabled' : ''}">
-            <a class="page-link" href="#" onclick="changeTanpaTransaksiPage(${currentPageTanpaTransaksi + 1}); return false;">&raquo;</a>
-        </li>`;
-    }
-    
-    function changeTanpaTransaksiPage(page) {
-        const totalPages = Math.ceil(dataTanpaTransaksi.length / itemsPerPageTanpaTransaksi);
-        if (page < 1 || page > totalPages) return;
-        currentPageTanpaTransaksi = page;
-        renderTanpaTransaksiPage();
-    }
-
-    function selectTanpaTransaksi(kdBarang, kdDivisi) {
-        inputBarang.value = kdBarang;
-        inputDivisi.value = kdDivisi || '';
-        if (modalTanpaTransaksiInstance) {
-            modalTanpaTransaksiInstance.hide();
-        }
-        fetchHistori();
-    }
-
-    function exportTanpaTransaksiXlsx() {
-        const stokFilter = document.getElementById('select-stok-filter-tanpa-transaksi').value;
-        window.location.href = `/stok/export/barang-tanpa-transaksi?stok_filter=${stokFilter}`;
-    }
 </script>
 {% endblock %}

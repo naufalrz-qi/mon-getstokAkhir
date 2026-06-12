@@ -40,6 +40,8 @@ class AuthController:
         if user and AuthController._verify_password(password, user['password_hash']):
             session['username'] = user['username']
             session['role'] = user['role']
+            session['menus'] = user.get('menus', [])
+            session['servers'] = user.get('servers', [])
             session['is_admin'] = True # backward comp
             session.permanent = True  # Mengikuti PERMANENT_SESSION_LIFETIME di config
             if request.is_json:
@@ -138,6 +140,33 @@ class AuthController:
             return f(*args, **kwargs)
         return decorated_function
         
+    @staticmethod
+    def menu_required(menu_name):
+        """Decorator untuk proteksi rute berdasarkan akses menu (RBAC)"""
+        def decorator(f):
+            @wraps(f)
+            def decorated_function(*args, **kwargs):
+                if not session.get('username'):
+                    if request.is_json or request.path.startswith('/stok/api/') or request.path.startswith('/stok/snapshot/'):
+                        return jsonify({'status': 'error', 'message': 'Authentication required. Mohon login.'}), 401
+                    return redirect('/auth/login')
+                
+                # Super admin bisa akses semua menu
+                if session.get('role') == 'super_admin':
+                    return f(*args, **kwargs)
+                    
+                # User biasa cek daftar menu yang diizinkan
+                user_menus = session.get('menus', [])
+                if menu_name not in user_menus:
+                    if request.is_json or request.path.startswith('/stok/api/') or request.path.startswith('/stok/snapshot/'):
+                        return jsonify({'status': 'error', 'message': 'Akses Ditolak. Anda tidak memiliki izin ke menu ini.'}), 403
+                    # Fallback redirect to dashboard
+                    return redirect('/stok/')
+                    
+                return f(*args, **kwargs)
+            return decorated_function
+        return decorator
+
     # --- CRUD ADMIN ---
     
     @staticmethod
@@ -162,6 +191,23 @@ class AuthController:
     @staticmethod
     def api_delete_user(username):
         success, msg = UserModel.delete(username)
+        if success:
+            return jsonify({'status': 'success', 'message': msg})
+        return jsonify({'status': 'error', 'message': msg}), 400
+
+    @staticmethod
+    def user_access_page():
+        """HTML Page: Kelola Akses Menu"""
+        return render_template('user_access.html')
+
+    @staticmethod
+    def api_update_user_access():
+        """API/POST Handler: Update user menus and servers"""
+        data = request.get_json()
+        if not data or not data.get('username') or 'menus' not in data or 'servers' not in data:
+            return jsonify({'status': 'error', 'message': 'Data tidak lengkap'}), 400
+            
+        success, msg = UserModel.update_access(data['username'], data['menus'], data['servers'])
         if success:
             return jsonify({'status': 'success', 'message': msg})
         return jsonify({'status': 'error', 'message': msg}), 400

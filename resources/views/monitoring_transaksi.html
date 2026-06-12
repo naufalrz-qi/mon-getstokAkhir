@@ -1,0 +1,668 @@
+{% extends "base.html" %}
+{% block title %}Monitoring Transaksi - Arunika{% endblock %}
+
+{% block extra_css %}
+<style>
+    .nav-tabs {
+        border-bottom: 2px solid var(--border-light);
+    }
+    .nav-tabs .nav-link {
+        color: var(--text-secondary);
+        font-weight: 600;
+        border: none;
+        padding: 0.75rem 1.25rem;
+        background: transparent;
+    }
+    .nav-tabs .nav-link:hover {
+        color: var(--accent);
+        border: none;
+    }
+    .nav-tabs .nav-link.active {
+        color: var(--accent);
+        background: transparent;
+        border: none;
+        border-bottom: 3px solid var(--accent);
+    }
+    .tab-content {
+        padding-top: 1.5rem;
+    }
+    
+    .cursor-pointer {
+        cursor: pointer;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 fade-up">
+    <div>
+        <h3 style="font-weight:800;letter-spacing:-0.03em;margin-bottom:0.25rem">
+            <i class="fas fa-file-invoice-dollar" style="color:var(--accent)"></i> Monitoring Transaksi
+        </h3>
+        <p style="color:var(--text-muted);font-size:0.85rem;margin:0">Monitoring pergerakan dan stok awal barang</p>
+    </div>
+</div>
+
+<div class="glass-card fade-up" style="animation-delay: 0.1s">
+    <div class="card-body p-4">
+        <!-- Tabs Nav -->
+        <ul class="nav nav-tabs" id="monitoringTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="tanpa-transaksi-tab" data-bs-toggle="tab" data-bs-target="#tanpa-transaksi" type="button" role="tab">
+                    <i class="fas fa-box-open me-2 text-primary"></i>Tanpa Transaksi
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="semua-barang-tab" data-bs-toggle="tab" data-bs-target="#semua-barang" type="button" role="tab">
+                    <i class="fas fa-list me-2 text-info"></i>Stok Awal Semua Barang
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="dengan-transaksi-tab" data-bs-toggle="tab" data-bs-target="#dengan-transaksi" type="button" role="tab">
+                    <i class="fas fa-search-dollar me-2 text-success"></i>Dengan Transaksi
+                </button>
+            </li>
+        </ul>
+
+        <!-- Tabs Content -->
+        <div class="tab-content" id="monitoringTabsContent">
+            
+            <!-- TAB 1: Barang Tanpa Transaksi -->
+            <div class="tab-pane fade show active" id="tanpa-transaksi" role="tabpanel">
+                <div class="d-flex justify-content-between mb-3 align-items-center flex-wrap gap-2">
+                    <p class="mb-0 text-muted" style="font-size:0.85rem">
+                        Daftar barang yang tidak ada transaksi setelah tutup buku.
+                    </p>
+                    <div class="d-flex gap-2">
+                        <select id="select-stok-filter-tanpa-transaksi" class="form-select form-select-sm" onchange="reloadTanpaTransaksi()" style="width: auto;">
+                            <option value="all">Semua Stok Awal</option>
+                            <option value="gte_zero">Stok Awal &ge; 0</option>
+                            <option value="gt_zero">Stok Awal &gt; 0</option>
+                        </select>
+                        <button class="btn btn-sm btn-success text-nowrap" onclick="exportTanpaTransaksiXlsx()">
+                            <i class="fas fa-file-excel me-1"></i> Export XLSX
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="loading-tanpa-transaksi" class="text-center py-4" style="display:none;">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="mt-2 text-muted">Memindai database...</p>
+                </div>
+
+                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                    <table class="table table-hover table-sm" id="table-tanpa-transaksi" style="display:none;">
+                        <thead class="sticky-top" style="background:var(--bg-card)">
+                            <tr>
+                                <th>Divisi</th>
+                                <th>Kode Barang</th>
+                                <th>Nama Barang</th>
+                                <th class="text-end">Stok Awal</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-tanpa-transaksi">
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div id="pagination-tanpa-transaksi-container" class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top" style="display:none;">
+                    <div class="text-muted" style="font-size: 0.85rem;" id="info-total-tanpa-transaksi">Total Data: 0</div>
+                    <nav>
+                        <ul class="pagination pagination-sm mb-0" id="ul-pagination-tanpa-transaksi">
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+
+            <!-- TAB 2: Semua Barang Stok Awal -->
+            <div class="tab-pane fade" id="semua-barang" role="tabpanel">
+                <div class="d-flex justify-content-between mb-3 align-items-center flex-wrap gap-2">
+                    <p class="mb-0 text-muted" style="font-size:0.85rem">
+                        Daftar semua barang beserta stok awalnya.
+                    </p>
+                    <div class="d-flex gap-2">
+                        <select id="select-stok-filter-semua-barang" class="form-select form-select-sm" onchange="reloadSemuaBarangStokAwal()" style="width: auto;">
+                            <option value="all">Semua Stok Awal</option>
+                            <option value="gte_zero">Stok Awal &ge; 0</option>
+                            <option value="gt_zero">Stok Awal &gt; 0</option>
+                        </select>
+                        <button class="btn btn-sm btn-success text-nowrap" onclick="exportSemuaBarangStokAwalXlsx()">
+                            <i class="fas fa-file-excel me-1"></i> Export XLSX
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="loading-semua-barang" class="text-center py-4" style="display:none;">
+                    <div class="spinner-border text-info" role="status"></div>
+                    <p class="mt-2 text-muted">Mengambil data dari database...</p>
+                </div>
+
+                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                    <table class="table table-hover table-sm" id="table-semua-barang" style="display:none;">
+                        <thead class="sticky-top" style="background:var(--bg-card)">
+                            <tr>
+                                <th>Divisi</th>
+                                <th>Kode Barang</th>
+                                <th>Nama Barang</th>
+                                <th class="text-end">Stok Awal</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-semua-barang">
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div id="pagination-semua-barang-container" class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top" style="display:none;">
+                    <div class="text-muted" style="font-size: 0.85rem;" id="info-total-semua-barang">Total Data: 0</div>
+                    <nav>
+                        <ul class="pagination pagination-sm mb-0" id="ul-pagination-semua-barang">
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+
+            <!-- TAB 3: Barang Dengan Transaksi -->
+            <div class="tab-pane fade" id="dengan-transaksi" role="tabpanel">
+                <div class="row g-2 mb-3 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label" style="font-size:0.8rem">Jenis Transaksi</label>
+                        <select id="select-jenis-transaksi" class="form-select form-select-sm">
+                            <option value="Semua">Semua Transaksi</option>
+                            <option value="Penjualan">Penjualan</option>
+                            <option value="Pembelian">Pembelian</option>
+                            <option value="Retur Penjualan">Retur Penjualan</option>
+                            <option value="Retur Pembelian">Retur Pembelian</option>
+                            <option value="Mutasi">Mutasi / Konsinyasi</option>
+                            <option value="Opname Masuk">Opname Masuk</option>
+                            <option value="Opname Keluar">Opname Keluar</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label" style="font-size:0.8rem">Dari Tahun</label>
+                        <input type="number" id="input-start-year" class="form-control form-control-sm" placeholder="Contoh: 2023">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label" style="font-size:0.8rem">Sampai Tahun</label>
+                        <input type="number" id="input-end-year" class="form-control form-control-sm" placeholder="Contoh: 2024">
+                    </div>
+                    <div class="col-md-3 d-flex gap-2">
+                        <button class="btn btn-sm btn-primary w-100" onclick="reloadDenganTransaksi()">
+                            <i class="fas fa-search me-1"></i> Cari
+                        </button>
+                        <button class="btn btn-sm btn-success text-nowrap" onclick="exportDenganTransaksiXlsx()" title="Export Daftar Barang">
+                            <i class="fas fa-file-excel"></i>
+                        </button>
+                        <button class="btn btn-sm btn-info text-nowrap text-white" onclick="exportBulkTransaksiXlsx()" title="Export Detail Seluruh Transaksi">
+                            <i class="fas fa-file-download"></i> Detail
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="loading-dengan-transaksi" class="text-center py-4" style="display:none;">
+                    <div class="spinner-border text-success" role="status"></div>
+                    <p class="mt-2 text-muted">Mencari transaksi...</p>
+                </div>
+
+                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                    <table class="table table-hover table-sm" id="table-dengan-transaksi" style="display:none;">
+                        <thead class="sticky-top" style="background:var(--bg-card)">
+                            <tr>
+                                <th>Divisi</th>
+                                <th>Kode Barang</th>
+                                <th>Nama Barang</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-dengan-transaksi">
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div id="pagination-dengan-transaksi-container" class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top" style="display:none;">
+                    <div class="text-muted" style="font-size: 0.85rem;" id="info-total-dengan-transaksi">Total Data: 0</div>
+                    <nav>
+                        <ul class="pagination pagination-sm mb-0" id="ul-pagination-dengan-transaksi">
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Global State
+    let dataTanpaTransaksi = [];
+    let currentPageTanpaTransaksi = 1;
+    let itemsPerPage = 100;
+
+    let dataSemuaBarang = [];
+    let currentPageSemuaBarang = 1;
+
+    let dataDenganTransaksi = [];
+    let currentPageDenganTransaksi = 1;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const currentYear = new Date().getFullYear();
+        document.getElementById('input-start-year').value = currentYear;
+        document.getElementById('input-end-year').value = currentYear;
+
+        // Auto load tabs content when clicked
+        const tabElTanpa = document.querySelector('button[data-bs-target="#tanpa-transaksi"]');
+        tabElTanpa.addEventListener('shown.bs.tab', function (event) {
+            if (dataTanpaTransaksi.length === 0) fetchBarangTanpaTransaksi();
+        });
+
+        const tabElSemua = document.querySelector('button[data-bs-target="#semua-barang"]');
+        tabElSemua.addEventListener('shown.bs.tab', function (event) {
+            if (dataSemuaBarang.length === 0) fetchSemuaBarangStokAwal();
+        });
+
+        // Initialize the first tab explicitly
+        fetchBarangTanpaTransaksi();
+    });
+
+    // =========================================================================
+    // BARANG TANPA TRANSAKSI (STOK AWAL SAJA)
+    // =========================================================================
+    function fetchBarangTanpaTransaksi() {
+        const loading = document.getElementById('loading-tanpa-transaksi');
+        const table = document.getElementById('table-tanpa-transaksi');
+        const pagContainer = document.getElementById('pagination-tanpa-transaksi-container');
+        
+        loading.style.display = 'block';
+        table.style.display = 'none';
+        pagContainer.style.display = 'none';
+        
+        fetch('/stok/barang-tanpa-transaksi')
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    dataTanpaTransaksi = data.data;
+                    currentPageTanpaTransaksi = 1;
+                    renderTableTanpaTransaksi();
+                } else {
+                    alert('Gagal mengambil data: ' + data.message);
+                }
+            })
+            .catch(err => {
+                alert('Error koneksi ke server.');
+                console.error(err);
+            })
+            .finally(() => {
+                loading.style.display = 'none';
+            });
+    }
+
+    function reloadTanpaTransaksi() {
+        currentPageTanpaTransaksi = 1;
+        renderTableTanpaTransaksi();
+    }
+
+    function renderTableTanpaTransaksi() {
+        const tbody = document.getElementById('tbody-tanpa-transaksi');
+        const table = document.getElementById('table-tanpa-transaksi');
+        const filterVal = document.getElementById('select-stok-filter-tanpa-transaksi').value;
+        
+        let filteredData = dataTanpaTransaksi;
+        if (filterVal === 'gt_zero') {
+            filteredData = dataTanpaTransaksi.filter(row => (row.stok_awal || 0) > 0);
+        } else if (filterVal === 'gte_zero') {
+            filteredData = dataTanpaTransaksi.filter(row => (row.stok_awal || 0) >= 0);
+        }
+
+        const totalData = filteredData.length;
+        document.getElementById('info-total-tanpa-transaksi').textContent = `Total Data: ${totalData}`;
+
+        const totalPages = Math.ceil(totalData / itemsPerPage);
+        if (currentPageTanpaTransaksi > totalPages) currentPageTanpaTransaksi = totalPages || 1;
+
+        const startIndex = (currentPageTanpaTransaksi - 1) * itemsPerPage;
+        const endIndex = startIndex + itemsPerPage;
+        const paginatedData = filteredData.slice(startIndex, endIndex);
+
+        tbody.innerHTML = '';
+        if (paginatedData.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-3">Tidak ada barang</td></tr>`;
+        } else {
+            paginatedData.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${row.kd_divisi || '-'}</td>
+                    <td class="fw-bold">${row.kd_barang}</td>
+                    <td>${row.nama_barang || '-'}</td>
+                    <td class="text-end fw-bold">${row.stok_awal != null ? row.stok_awal.toLocaleString('id-ID') : 0}</td>
+                `;
+                tr.style.cursor = 'pointer';
+                tr.onclick = () => window.location.href = `/stok/histori?kd_barang=${encodeURIComponent(row.kd_barang)}&kd_divisi=${encodeURIComponent(row.kd_divisi || '')}`;
+                tbody.appendChild(tr);
+            });
+        }
+        
+        table.style.display = 'table';
+        renderPaginationTanpaTransaksi(totalPages);
+    }
+
+    function renderPaginationTanpaTransaksi(totalPages) {
+        const ul = document.getElementById('ul-pagination-tanpa-transaksi');
+        const container = document.getElementById('pagination-tanpa-transaksi-container');
+        
+        if (totalPages <= 1) {
+            container.style.display = 'none';
+            return;
+        }
+        container.style.display = 'flex';
+        ul.innerHTML = '';
+        
+        // Prev
+        const liPrev = document.createElement('li');
+        liPrev.className = `page-item ${currentPageTanpaTransaksi === 1 ? 'disabled' : ''}`;
+        liPrev.innerHTML = `<a class="page-link" href="javascript:void(0)" onclick="changePageTanpaTransaksi(${currentPageTanpaTransaksi - 1})">Prev</a>`;
+        ul.appendChild(liPrev);
+
+        // Max 5 buttons
+        let startPage = Math.max(1, currentPageTanpaTransaksi - 2);
+        let endPage = Math.min(totalPages, startPage + 4);
+        if (endPage - startPage < 4) {
+            startPage = Math.max(1, endPage - 4);
+        }
+
+        for (let i = startPage; i <= endPage; i++) {
+            const li = document.createElement('li');
+            li.className = `page-item ${i === currentPageTanpaTransaksi ? 'active' : ''}`;
+            li.innerHTML = `<a class="page-link" href="javascript:void(0)" onclick="changePageTanpaTransaksi(${i})">${i}</a>`;
+            ul.appendChild(li);
+        }
+
+        // Next
+        const liNext = document.createElement('li');
+        liNext.className = `page-item ${currentPageTanpaTransaksi === totalPages ? 'disabled' : ''}`;
+        liNext.innerHTML = `<a class="page-link" href="javascript:void(0)" onclick="changePageTanpaTransaksi(${currentPageTanpaTransaksi + 1})">Next</a>`;
+        ul.appendChild(liNext);
+    }
+
+    function changePageTanpaTransaksi(page) {
+        currentPageTanpaTransaksi = page;
+        renderTableTanpaTransaksi();
+    }
+
+    function exportTanpaTransaksiXlsx() {
+        const filterVal = document.getElementById('select-stok-filter-tanpa-transaksi').value;
+        window.location.href = `/stok/export/barang-tanpa-transaksi?stok_filter=${filterVal}`;
+    }
+
+    // =========================================================================
+    // SEMUA BARANG BESERTA STOK AWAL
+    // =========================================================================
+    function fetchSemuaBarangStokAwal() {
+        const loading = document.getElementById('loading-semua-barang');
+        const table = document.getElementById('table-semua-barang');
+        const pagContainer = document.getElementById('pagination-semua-barang-container');
+        
+        loading.style.display = 'block';
+        table.style.display = 'none';
+        pagContainer.style.display = 'none';
+        
+        fetch('/stok/semua-barang-stok-awal')
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    dataSemuaBarang = data.data;
+                    currentPageSemuaBarang = 1;
+                    renderTableSemuaBarangStokAwal();
+                } else {
+                    alert('Gagal mengambil data: ' + data.message);
+                }
+            })
+            .catch(err => {
+                alert('Error koneksi ke server.');
+                console.error(err);
+            })
+            .finally(() => {
+                loading.style.display = 'none';
+            });
+    }
+
+    function reloadSemuaBarangStokAwal() {
+        currentPageSemuaBarang = 1;
+        renderTableSemuaBarangStokAwal();
+    }
+
+    function renderTableSemuaBarangStokAwal() {
+        const tbody = document.getElementById('tbody-semua-barang');
+        const table = document.getElementById('table-semua-barang');
+        const filterVal = document.getElementById('select-stok-filter-semua-barang').value;
+        
+        let filteredData = dataSemuaBarang;
+        if (filterVal === 'gt_zero') {
+            filteredData = dataSemuaBarang.filter(row => (row.stok_awal || 0) > 0);
+        } else if (filterVal === 'gte_zero') {
+            filteredData = dataSemuaBarang.filter(row => (row.stok_awal || 0) >= 0);
+        }
+
+        const totalData = filteredData.length;
+        document.getElementById('info-total-semua-barang').textContent = `Total Data: ${totalData}`;
+
+        const totalPages = Math.ceil(totalData / itemsPerPage);
+        if (currentPageSemuaBarang > totalPages) currentPageSemuaBarang = totalPages || 1;
+
+        const startIndex = (currentPageSemuaBarang - 1) * itemsPerPage;
+        const endIndex = startIndex + itemsPerPage;
+        const paginatedData = filteredData.slice(startIndex, endIndex);
+
+        tbody.innerHTML = '';
+        if (paginatedData.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-3">Tidak ada barang</td></tr>`;
+        } else {
+            paginatedData.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${row.kd_divisi || '-'}</td>
+                    <td class="fw-bold">${row.kd_barang}</td>
+                    <td>${row.nama_barang || '-'}</td>
+                    <td class="text-end fw-bold">${row.stok_awal != null ? row.stok_awal.toLocaleString('id-ID') : 0}</td>
+                `;
+                tr.style.cursor = 'pointer';
+                tr.onclick = () => window.location.href = `/stok/histori?kd_barang=${encodeURIComponent(row.kd_barang)}&kd_divisi=${encodeURIComponent(row.kd_divisi || '')}`;
+                tbody.appendChild(tr);
+            });
+        }
+        
+        table.style.display = 'table';
+        renderPaginationSemuaBarang(totalPages);
+    }
+
+    function renderPaginationSemuaBarang(totalPages) {
+        const ul = document.getElementById('ul-pagination-semua-barang');
+        const container = document.getElementById('pagination-semua-barang-container');
+        
+        if (totalPages <= 1) {
+            container.style.display = 'none';
+            return;
+        }
+        container.style.display = 'flex';
+        ul.innerHTML = '';
+        
+        // Prev
+        const liPrev = document.createElement('li');
+        liPrev.className = `page-item ${currentPageSemuaBarang === 1 ? 'disabled' : ''}`;
+        liPrev.innerHTML = `<a class="page-link" href="javascript:void(0)" onclick="changePageSemuaBarang(${currentPageSemuaBarang - 1})">Prev</a>`;
+        ul.appendChild(liPrev);
+
+        // Max 5 buttons
+        let startPage = Math.max(1, currentPageSemuaBarang - 2);
+        let endPage = Math.min(totalPages, startPage + 4);
+        if (endPage - startPage < 4) {
+            startPage = Math.max(1, endPage - 4);
+        }
+
+        for (let i = startPage; i <= endPage; i++) {
+            const li = document.createElement('li');
+            li.className = `page-item ${i === currentPageSemuaBarang ? 'active' : ''}`;
+            li.innerHTML = `<a class="page-link" href="javascript:void(0)" onclick="changePageSemuaBarang(${i})">${i}</a>`;
+            ul.appendChild(li);
+        }
+
+        // Next
+        const liNext = document.createElement('li');
+        liNext.className = `page-item ${currentPageSemuaBarang === totalPages ? 'disabled' : ''}`;
+        liNext.innerHTML = `<a class="page-link" href="javascript:void(0)" onclick="changePageSemuaBarang(${currentPageSemuaBarang + 1})">Next</a>`;
+        ul.appendChild(liNext);
+    }
+
+    function changePageSemuaBarang(page) {
+        currentPageSemuaBarang = page;
+        renderTableSemuaBarangStokAwal();
+    }
+
+    function exportSemuaBarangStokAwalXlsx() {
+        const filterVal = document.getElementById('select-stok-filter-semua-barang').value;
+        window.location.href = `/stok/export/semua-barang-stok-awal?stok_filter=${filterVal}`;
+    }
+
+    // =========================================================================
+    // BARANG DENGAN TRANSAKSI
+    // =========================================================================
+    function reloadDenganTransaksi() {
+        const loading = document.getElementById('loading-dengan-transaksi');
+        const table = document.getElementById('table-dengan-transaksi');
+        const pagContainer = document.getElementById('pagination-dengan-transaksi-container');
+        
+        const jenisTransaksi = document.getElementById('select-jenis-transaksi').value;
+        const startYear = document.getElementById('input-start-year').value;
+        const endYear = document.getElementById('input-end-year').value;
+
+        loading.style.display = 'block';
+        table.style.display = 'none';
+        pagContainer.style.display = 'none';
+
+        let url = `/stok/barang-dengan-transaksi?jenis_transaksi=${encodeURIComponent(jenisTransaksi)}`;
+        if (startYear) url += `&start_year=${startYear}`;
+        if (endYear) url += `&end_year=${endYear}`;
+        
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    dataDenganTransaksi = data.data;
+                    currentPageDenganTransaksi = 1;
+                    renderTableDenganTransaksi();
+                } else {
+                    alert('Gagal mengambil data: ' + data.message);
+                }
+            })
+            .catch(err => {
+                alert('Error koneksi ke server.');
+                console.error(err);
+            })
+            .finally(() => {
+                loading.style.display = 'none';
+            });
+    }
+
+    function renderTableDenganTransaksi() {
+        const tbody = document.getElementById('tbody-dengan-transaksi');
+        const table = document.getElementById('table-dengan-transaksi');
+        
+        const filteredData = dataDenganTransaksi;
+        const totalData = filteredData.length;
+        document.getElementById('info-total-dengan-transaksi').textContent = `Total Data: ${totalData}`;
+
+        const totalPages = Math.ceil(totalData / itemsPerPage);
+        if (currentPageDenganTransaksi > totalPages) currentPageDenganTransaksi = totalPages || 1;
+
+        const startIndex = (currentPageDenganTransaksi - 1) * itemsPerPage;
+        const endIndex = startIndex + itemsPerPage;
+        const paginatedData = filteredData.slice(startIndex, endIndex);
+
+        tbody.innerHTML = '';
+        if (paginatedData.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted py-3">Tidak ada barang</td></tr>`;
+        } else {
+            paginatedData.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${row.nama_divisi || row.kd_divisi || '-'}</td>
+                    <td class="fw-bold">${row.kd_barang}</td>
+                    <td>${row.nama_barang || '-'}</td>
+                `;
+                tr.style.cursor = 'pointer';
+                tr.onclick = () => window.location.href = `/stok/histori?kd_barang=${encodeURIComponent(row.kd_barang)}`;
+                tbody.appendChild(tr);
+            });
+        }
+        
+        table.style.display = 'table';
+        renderPaginationDenganTransaksi(totalPages);
+    }
+
+    function renderPaginationDenganTransaksi(totalPages) {
+        const ul = document.getElementById('ul-pagination-dengan-transaksi');
+        const container = document.getElementById('pagination-dengan-transaksi-container');
+        
+        if (totalPages <= 1) {
+            container.style.display = 'none';
+            return;
+        }
+        container.style.display = 'flex';
+        ul.innerHTML = '';
+        
+        // Prev
+        const liPrev = document.createElement('li');
+        liPrev.className = `page-item ${currentPageDenganTransaksi === 1 ? 'disabled' : ''}`;
+        liPrev.innerHTML = `<a class="page-link" href="javascript:void(0)" onclick="changePageDenganTransaksi(${currentPageDenganTransaksi - 1})">Prev</a>`;
+        ul.appendChild(liPrev);
+
+        // Max 5 buttons
+        let startPage = Math.max(1, currentPageDenganTransaksi - 2);
+        let endPage = Math.min(totalPages, startPage + 4);
+        if (endPage - startPage < 4) {
+            startPage = Math.max(1, endPage - 4);
+        }
+
+        for (let i = startPage; i <= endPage; i++) {
+            const li = document.createElement('li');
+            li.className = `page-item ${i === currentPageDenganTransaksi ? 'active' : ''}`;
+            li.innerHTML = `<a class="page-link" href="javascript:void(0)" onclick="changePageDenganTransaksi(${i})">${i}</a>`;
+            ul.appendChild(li);
+        }
+
+        // Next
+        const liNext = document.createElement('li');
+        liNext.className = `page-item ${currentPageDenganTransaksi === totalPages ? 'disabled' : ''}`;
+        liNext.innerHTML = `<a class="page-link" href="javascript:void(0)" onclick="changePageDenganTransaksi(${currentPageDenganTransaksi + 1})">Next</a>`;
+        ul.appendChild(liNext);
+    }
+
+    function changePageDenganTransaksi(page) {
+        currentPageDenganTransaksi = page;
+        renderTableDenganTransaksi();
+    }
+
+    function exportDenganTransaksiXlsx() {
+        const jenisTransaksi = document.getElementById('select-jenis-transaksi').value;
+        const startYear = document.getElementById('input-start-year').value;
+        const endYear = document.getElementById('input-end-year').value;
+        
+        let url = `/stok/export/barang-dengan-transaksi?jenis_transaksi=${encodeURIComponent(jenisTransaksi)}`;
+        if (startYear) url += `&start_year=${startYear}`;
+        if (endYear) url += `&end_year=${endYear}`;
+        
+        window.location.href = url;
+    }
+
+    function exportBulkTransaksiXlsx() {
+        const jenisTransaksi = document.getElementById('select-jenis-transaksi').value;
+        const startYear = document.getElementById('input-start-year').value;
+        const endYear = document.getElementById('input-end-year').value;
+        
+        let url = `/stok/export/bulk-transaksi?jenis_transaksi=${encodeURIComponent(jenisTransaksi)}`;
+        if (startYear) url += `&start_year=${startYear}`;
+        if (endYear) url += `&end_year=${endYear}`;
+        
+        window.location.href = url;
+    }
+</script>
+{% endblock %}
