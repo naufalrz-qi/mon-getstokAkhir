@@ -292,11 +292,11 @@ class DashboardService:
                 global_kpi[k] += kpi.get(k, 0)
                 
             for ds in res.get('dead_stock', []):
-                ds['cabang'] = server_name
+                ds['lokasi'] = server_name
                 all_dead_stock.append(ds)
                 
             for sk in res.get('stok_kritis', []):
-                sk['cabang'] = server_name
+                sk['lokasi'] = server_name
                 all_stok_kritis.append(sk)
                 
         cabang_leaderboard.sort(key=lambda x: x['nilai'], reverse=True)

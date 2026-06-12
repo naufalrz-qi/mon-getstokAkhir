@@ -244,8 +244,8 @@
         <div class="filter-group">
             <label for="filter-mode" style="font-weight: 600;">Mode:</label>
             <select id="filter-mode" class="form-select form-select-sm" style="width: auto; font-weight: 600; background-color: var(--bg-body); border-color: var(--border-card); color: var(--text-primary);">
-                <option value="single">Cabang Saat Ini</option>
-                <option value="global">Global (Semua Cabang)</option>
+                <option value="single">Lokasi Saat Ini</option>
+                <option value="global">Global (Semua Lokasi)</option>
             </select>
             <label for="filter-tahun" style="font-weight: 600;">Tahun:</label>
             <select id="filter-tahun" class="form-select form-select-sm" style="width: auto; min-width: 120px; font-weight: 600; background-color: var(--bg-body); border-color: var(--border-card); color: var(--text-primary);">
@@ -265,7 +265,7 @@
                 <i class="fas fa-wallet kpi-icon"></i>
                 <div class="kpi-title">Total Penjualan</div>
                 <div class="kpi-value" id="kpi-penjualan">Rp 0</div>
-                <div class="kpi-subtext">Omset kotor cabang (Non-Retail)</div>
+                <div class="kpi-subtext">Omset kotor seluruh lokasi (Non-Retail)</div>
             </div>
             <div class="kpi-card green">
                 <i class="fas fa-chart-line kpi-icon"></i>
@@ -290,7 +290,7 @@
 
     <div class="bento-grid">
         <div class="bento-card col-span-12">
-            <div class="bento-card-title" id="title-leaderboard">Leaderboard Divisi / Cabang</div>
+            <div class="bento-card-title" id="title-leaderboard">Leaderboard Divisi / Lokasi</div>
             <div class="chart-container" style="height: 350px;">
                 <canvas id="chart-divisi"></canvas>
             </div>
@@ -452,7 +452,7 @@
         const overlay = document.getElementById('loading-overlay');
         overlay.classList.add('active');
         
-        document.getElementById('current-server-name').innerText = mode === 'global' ? 'Semua Cabang (Global)' : (localStorage.getItem('arunika-server-name') || 'Belum Dipilih');
+        document.getElementById('current-server-name').innerText = mode === 'global' ? 'Semua Lokasi (Global)' : (localStorage.getItem('arunika-server-name') || 'Belum Dipilih');
 
         try {
             const res = await fetch(`/api/dashboard/summary?tahun=${tahun}&mode=${mode}`);
@@ -481,9 +481,9 @@
         
         // Leaderboard Chart Title
         const mode = document.getElementById('filter-mode').value;
-        document.getElementById('title-leaderboard').innerText = mode === 'global' ? 'Leaderboard Omset Cabang' : 'Leaderboard Divisi';
+        document.getElementById('title-leaderboard').innerText = mode === 'global' ? 'Leaderboard Omset Lokasi' : 'Leaderboard Divisi';
         
-        // Leaderboard Cabang Chart
+        // Leaderboard Lokasi Chart
         const divisiData = data.penjualan_per_divisi || [];
         renderBarChart('chart-divisi', {
             labels: divisiData.map(d => d.divisi),
@@ -510,9 +510,9 @@
             htmlKritis = '<tr><td colspan="3" class="text-center">Aman, tidak ada stok kritis</td></tr>';
         } else {
             stokKritis.slice(0,10).forEach(item => {
-                const cabangBadge = item.cabang ? ` <span class="badge" style="background: var(--bg-card); color: var(--text-muted); font-size: 0.7em; border: 1px solid var(--border-card);">${item.cabang}</span>` : '';
+                const lokasiBadge = item.lokasi ? ` <span class="badge" style="background: var(--bg-card); color: var(--text-muted); font-size: 0.7em; border: 1px solid var(--border-card);">${item.lokasi}</span>` : '';
                 htmlKritis += `<tr>
-                    <td><div style="font-weight: 600">${item.barang}${cabangBadge}</div></td>
+                    <td><div style="font-weight: 600">${item.barang}${lokasiBadge}</div></td>
                     <td><span class="badge badge-warning">${item.kategori}</span></td>
                     <td style="text-align: right; color: var(--danger); font-weight: bold;">${formatNum(item.stok_akhir)}</td>
                 </tr>`;
@@ -526,9 +526,9 @@
             htmlDead = '<tr><td colspan="3" class="text-center">Bagus, tidak ada stok mati</td></tr>';
         } else {
             deadStock.slice(0,10).forEach(item => {
-                const cabangBadge = item.cabang ? ` <span class="badge" style="background: var(--bg-card); color: var(--text-muted); font-size: 0.7em; border: 1px solid var(--border-card);">${item.cabang}</span>` : '';
+                const lokasiBadge = item.lokasi ? ` <span class="badge" style="background: var(--bg-card); color: var(--text-muted); font-size: 0.7em; border: 1px solid var(--border-card);">${item.lokasi}</span>` : '';
                 htmlDead += `<tr>
-                    <td><div style="font-weight: 600">${item.barang}${cabangBadge}</div></td>
+                    <td><div style="font-weight: 600">${item.barang}${lokasiBadge}</div></td>
                     <td><span class="badge badge-danger">${item.kategori}</span></td>
                     <td style="text-align: right; color: var(--text-primary); font-weight: bold;">${formatNum(item.stok_akhir)}</td>
                 </tr>`;
