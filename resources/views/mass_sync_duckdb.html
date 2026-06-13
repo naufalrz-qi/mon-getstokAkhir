@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+
+{% block title %}Mass Sync DuckDB Analitik{% endblock %}
+
+{% block content %}
+<style>
+    .dashboard-header { margin-bottom: 2rem; }
+    .dashboard-title {
+        font-size: 1.8rem; font-weight: 700; margin-bottom: 0.5rem;
+        background: linear-gradient(135deg, var(--text-primary), var(--accent));
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .sync-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-card);
+        border-radius: 16px;
+        padding: 2rem;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+    }
+    .table th { background: var(--bg-body); color: var(--text-primary); border-bottom: 2px solid var(--border-card); font-weight: 600; }
+    .table td { border-bottom: 1px solid var(--border-card); vertical-align: middle; }
+    .progress-bar { transition: width 0.3s ease; }
+    .badge { font-weight: 600; padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; letter-spacing: 0.05em; display: inline-block; text-align: center; width: 130px;}
+</style>
+
+<div class="dashboard-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1 class="dashboard-title">Mass Sync DuckDB Analitik</h1>
+        <p class="text-muted">Pantau dan sinkronisasi seluruh database analitik DuckDB cabang sekaligus dari satu tempat.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-primary" id="btn-refresh-all" onclick="startMassRefresh(30)">
+            <i class="fas fa-bolt"></i> Sync Semua (30 Hari)
+        </button>
+        <button class="btn btn-warning" id="btn-yearly-all" onclick="startMassRefresh(365)">
+            <i class="fas fa-calendar-alt"></i> Sync Semua (1 Tahun)
+        </button>
+    </div>
+</div>
+
+<div id="alert-container"></div>
+
+<div class="sync-card">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead>
+                <tr>
+                    <th width="20%">Cabang / Server</th>
+                    <th width="15%">Status Sync</th>
+                    <th width="35%">Progress / Log</th>
+                    <th width="30%" class="text-end">Aksi Individual</th>
+                </tr>
+            </thead>
+            <tbody id="servers-tbody">
+                <tr><td colspan="4" class="text-center text-muted py-4">Memuat data server...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    let serversData = [];
+    let pollingIntervals = {};
+    let isMassRefreshing = false;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        fetch('/stok/server-list')
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    serversData = data.servers.filter(s => s.type !== 'retail');
+                    renderTable();
+                    serversData.forEach(s => checkStatus(s.key));
+                }
+            });
+    });
+
+    function renderTable() {
+        const tbody = document.getElementById('servers-tbody');
+        tbody.innerHTML = '';
+        serversData.forEach(s => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>
+                    <div class="fw-bold" style="color: var(--text-primary)">${s.name}</div>
+                    <div class="small text-muted">${s.key}</div>
+                </td>
+                <td>
+                    <span class="badge" id="badge-${s.key}" style="background: var(--bg-glass); color: var(--text-muted);">IDLE</span>
+                </td>
+                <td>
+                    <div class="progress" style="height: 8px; border-radius: 4px; background: var(--bg-glass); overflow: hidden; margin-bottom: 4px;">
+                        <div id="progress-${s.key}" class="progress-bar" style="width: 0%; background: var(--accent);"></div>
+                    </div>
+                    <div class="small text-muted text-truncate" id="msg-${s.key}" style="max-width: 300px;">Menunggu perintah...</div>
+                </td>
+                <td class="text-end">
+                    <div class="btn-group">
+                        <button class="btn btn-glass btn-sm" id="btn-weekly-${s.key}" onclick="startSingleRefresh('${s.key}', 30)" title="30 Hari"><i class="fas fa-bolt"></i> 30 Hari</button>
+                        <button class="btn btn-glass btn-sm" id="btn-yearly-${s.key}" onclick="startSingleRefresh('${s.key}', 365)" title="1 Tahun"><i class="fas fa-calendar-alt"></i> 1 Tahun</button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function startMassRefresh(days_back = 30) {
+        if(isMassRefreshing) return;
+        if(!confirm(`Anda yakin ingin memulai sinkronisasi massal untuk ${days_back} hari terakhir ke seluruh cabang?`)) return;
+        
+        isMassRefreshing = true;
+        
+        const btnAll = document.getElementById('btn-refresh-all');
+        const btnYearlyAll = document.getElementById('btn-yearly-all');
+        
+        const activeBtn = days_back === 365 ? btnYearlyAll : btnAll;
+        
+        if(btnAll) btnAll.disabled = true;
+        if(btnYearlyAll) btnYearlyAll.disabled = true;
+        
+        const orgText = activeBtn.innerHTML;
+        activeBtn.innerHTML = '<i class="fas fa-spinner fa-spin fa-sm"></i> Mengeksekusi...';
+        
+        fetch('/api/duckdb/mass-sync', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({days_back: days_back})
+        })
+        .then(r => r.json())
+        .then(res => {
+            if(res.status === 'success') {
+                serversData.forEach(s => startPolling(s.key, null));
+                showAlert('success', 'Mass Sync telah dimulai di latar belakang.');
+            } else {
+                showAlert('error', res.message);
+            }
+        })
+        .catch(err => {
+            showAlert('error', err.message);
+        })
+        .finally(() => {
+            isMassRefreshing = false;
+            if(btnAll) btnAll.disabled = false;
+            if(btnYearlyAll) btnYearlyAll.disabled = false;
+            activeBtn.innerHTML = '<i class="fas fa-check-circle fa-sm"></i> Berjalan';
+            setTimeout(() => { activeBtn.innerHTML = orgText; }, 3000);
+        });
+    }
+
+    function startSingleRefresh(serverKey, days_back = 30) {
+        return new Promise((resolve) => {
+            const btnW = document.getElementById(`btn-weekly-${serverKey}`);
+            const btnY = document.getElementById(`btn-yearly-${serverKey}`);
+            
+            if(btnW) btnW.disabled = true;
+            if(btnY) btnY.disabled = true;
+            
+            const btnActive = days_back === 365 ? btnY : btnW;
+            if(btnActive) btnActive.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+            fetch('/api/duckdb/sync', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({server_key: serverKey, days_back: days_back})
+            })
+            .then(r => r.json())
+            .then(data => {
+                startPolling(serverKey, resolve);
+            })
+            .catch(err => {
+                updateRowUI(serverKey, { state: 'error', message: err.message });
+                resetIndivButtons(serverKey);
+                resolve();
+            });
+        });
+    }
+
+    function resetIndivButtons(serverKey) {
+        const btnW = document.getElementById(`btn-weekly-${serverKey}`);
+        const btnY = document.getElementById(`btn-yearly-${serverKey}`);
+        if(btnW) { btnW.disabled = false; btnW.innerHTML = '<i class="fas fa-bolt"></i> 30 Hari'; }
+        if(btnY) { btnY.disabled = false; btnY.innerHTML = '<i class="fas fa-calendar-alt"></i> 1 Tahun'; }
+    }
+
+    function checkStatus(serverKey) {
+        fetch('/api/duckdb/mass-status')
+            .then(r => r.json())
+            .then(res => {
+                if(res.status === 'success' && res.data[serverKey]) {
+                    updateRowUI(serverKey, res.data[serverKey]);
+                    if(['starting', 'running', 'starting...'].includes(res.data[serverKey].state.toLowerCase())) {
+                        startPolling(serverKey, null);
+                    }
+                }
+            })
+            .catch(() => {});
+    }
+
+    function startPolling(serverKey, onComplete) {
+        if (pollingIntervals[serverKey]) return; // Already polling
+        
+        pollingIntervals[serverKey] = setInterval(() => {
+            fetch('/api/duckdb/mass-status')
+                .then(r => r.json())
+                .then(res => {
+                    if(res.status === 'success' && res.data[serverKey]) {
+                        const data = res.data[serverKey];
+                        updateRowUI(serverKey, data);
+                        if (data.state === 'finished' || data.state === 'error' || data.state === 'idle') {
+                            clearInterval(pollingIntervals[serverKey]);
+                            delete pollingIntervals[serverKey];
+                            resetIndivButtons(serverKey);
+                            if(onComplete) onComplete();
+                        }
+                    }
+                })
+                .catch(err => {
+                    clearInterval(pollingIntervals[serverKey]);
+                    delete pollingIntervals[serverKey];
+                    if(onComplete) onComplete();
+                });
+        }, 1500);
+    }
+
+    function updateRowUI(serverKey, data) {
+        const msg = document.getElementById(`msg-${serverKey}`);
+        const badge = document.getElementById(`badge-${serverKey}`);
+        const progress = document.getElementById(`progress-${serverKey}`);
+        
+        if(!msg || !badge || !progress) return;
+
+        msg.textContent = data.message || '';
+        
+        if (['starting', 'running'].includes(data.state) || data.state.includes('starting')) {
+            badge.textContent = data.state.toUpperCase() + ` (${data.progress || 0}%)`;
+            badge.style.background = 'rgba(255,210,0,0.15)';
+            badge.style.color = 'var(--warning)';
+            progress.style.width = (data.progress || 0) + '%';
+            progress.style.background = 'linear-gradient(90deg,var(--warning),var(--danger))';
+        } else if (data.state === 'finished') {
+            badge.textContent = `SELESAI`;
+            badge.style.background = 'var(--success-bg)';
+            badge.style.color = 'var(--success)';
+            progress.style.width = '100%';
+            progress.style.background = 'linear-gradient(90deg,var(--accent),var(--success))';
+        } else if (data.state === 'error') {
+            badge.textContent = 'ERROR';
+            badge.style.background = 'rgba(255,77,106,0.15)';
+            badge.style.color = 'var(--danger)';
+            progress.style.width = '100%';
+            progress.style.background = 'rgba(255,77,106,0.5)';
+        } else {
+            badge.textContent = 'IDLE';
+            badge.style.background = 'var(--bg-glass)';
+            badge.style.color = 'var(--text-muted)';
+            progress.style.width = '0%';
+        }
+    }
+
+    function showAlert(type, msg) {
+        const c = document.getElementById('alert-container');
+        const cls = type === 'error' ? 'danger' : type === 'warning' ? 'warning' : 'success';
+        c.innerHTML = `<div class="alert alert-glass alert-${cls} alert-dismissible fade show"><i class="fas fa-${type==='error'?'exclamation-circle':type==='warning'?'exclamation-triangle':'check-circle'}"></i> ${msg}<button class="btn-close" data-bs-dismiss="alert"></button></div>`;
+        if (type !== 'error') setTimeout(() => { const a = c.querySelector('.alert'); if(a) a.remove(); }, 5000);
+    }
+</script>
+{% endblock %}

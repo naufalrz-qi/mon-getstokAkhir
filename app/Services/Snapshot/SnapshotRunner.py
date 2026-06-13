@@ -45,6 +45,7 @@ class SnapshotRunner:
             )
             SnapshotState._refresh_threads[server_key] = t
             t.start()
+            
             return {'status': 'started', 'message': 'Refresh dimulai'}
 
     @classmethod
@@ -549,6 +550,17 @@ class SnapshotRunner:
                                     'INSERT INTO dashboard_transaksi VALUES (?,?,?,?)',
                                     [tuple(r) for r in rows_trans]
                                 )
+                                
+                            # Customer
+                            cursor_mssql.execute(_load_sql('../dashboard/04_customer_summary.sql'), [tahun_ini, tahun_ini])
+                            rows_cust = cursor_mssql.fetchall()
+                            conn_db.execute('DELETE FROM dashboard_customer WHERE tahun = ?', (tahun_ini,))
+                            if rows_cust:
+                                conn_db.executemany(
+                                    'INSERT INTO dashboard_customer VALUES (?,?,?,?,?,?,?)',
+                                    [tuple(r) for r in rows_cust]
+                                )
+
                             conn_mssql.close()
                             print(f"[DELTA] Dashboard summaries for {tahun_ini} updated successfully.")
                     except Exception as dash_err:
@@ -768,6 +780,7 @@ class SnapshotRunner:
                 query_tasks['dashboard_penjualan'] = ('../dashboard/01_penjualan_summary.sql', [tahun_ini - 5, tahun_ini])
                 query_tasks['dashboard_pembelian'] = ('../dashboard/02_pembelian_summary.sql', [tahun_ini - 5, tahun_ini])
                 query_tasks['dashboard_transaksi'] = ('../dashboard/03_transaksi_summary.sql', [tahun_ini - 5, tahun_ini])
+                query_tasks['dashboard_customer'] = ('../dashboard/04_customer_summary.sql', [tahun_ini - 5, tahun_ini])
 
                 fetch_results = {}
                 errors = []
@@ -966,6 +979,21 @@ class SnapshotRunner:
                         conn.executemany(
                             'INSERT INTO dashboard_transaksi VALUES (?,?,?,?)',
                             transaksi_batch
+                        )
+
+                    # Insert dashboard_customer
+                    if 'dashboard_customer' in fetch_results:
+                        cust_batch = []
+                        for row in fetch_results['dashboard_customer']:
+                            cust_batch.append((
+                                row.get('kd_divisi'), row.get('kd_customer'),
+                                row.get('nama_customer'), row.get('total_transaksi', 0),
+                                row.get('total_belanja', 0), row.get('bulan'), row.get('tahun')
+                            ))
+                        conn.execute('DELETE FROM dashboard_customer')
+                        conn.executemany(
+                            'INSERT INTO dashboard_customer VALUES (?,?,?,?,?,?,?)',
+                            cust_batch
                         )
 
                     now_str = datetime.now().isoformat()

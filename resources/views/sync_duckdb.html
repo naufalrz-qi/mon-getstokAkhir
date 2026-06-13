@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block title %}Sinkronisasi DuckDB{% endblock %}
+
+{% block content %}
+<style>
+    .dashboard-header { margin-bottom: 2rem; }
+    .dashboard-title {
+        font-size: 1.8rem; font-weight: 700; margin-bottom: 0.5rem;
+        background: linear-gradient(135deg, var(--text-primary), var(--accent));
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    
+    .sync-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-card);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+    }
+
+    .sync-options {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1.5rem;
+        margin-top: 1.5rem;
+    }
+
+    .sync-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+        border: 2px solid var(--border-card);
+        border-radius: 12px;
+        background: var(--bg-body);
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-align: center;
+    }
+
+    .sync-btn:hover {
+        border-color: var(--accent);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+
+    .sync-btn i { font-size: 2.5rem; margin-bottom: 1rem; color: var(--accent); }
+    .sync-btn.heavy i { color: #f59e0b; }
+    .sync-btn.full i { color: #ef4444; }
+
+    .sync-title { font-weight: 600; font-size: 1.1rem; margin-bottom: 0.5rem; }
+    .sync-desc { font-size: 0.9rem; color: var(--text-muted); }
+
+    .status-container {
+        margin-top: 2rem;
+        padding: 1.5rem;
+        background: var(--bg-body);
+        border-radius: 12px;
+        border: 1px solid var(--border-card);
+    }
+
+    .progress-wrapper {
+        margin: 1.5rem 0;
+        height: 12px;
+        background: var(--border-card);
+        border-radius: 6px;
+        overflow: hidden;
+    }
+
+    .progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, var(--accent), #4ade80);
+        width: 0%;
+        transition: width 0.3s ease;
+    }
+
+    .log-box {
+        font-family: monospace;
+        background: #1e293b;
+        color: #e2e8f0;
+        padding: 1rem;
+        border-radius: 8px;
+        min-height: 100px;
+        max-height: 300px;
+        overflow-y: auto;
+        font-size: 0.9rem;
+    }
+</style>
+
+<div class="dashboard-header">
+    <h1 class="dashboard-title">Sinkronisasi Database Analitik (DuckDB)</h1>
+    <p class="text-muted">Tarik data penjualan dari SQL Server ke Database Analitik Lokal untuk mempercepat Dashboard.</p>
+</div>
+
+<div class="sync-card">
+    <h3 style="margin-bottom: 0.5rem;">Pilih Rentang Waktu Sinkronisasi</h3>
+    <p class="text-muted">Pilih rentang waktu untuk ditarik. Untuk pemakaian harian cukup gunakan 30 Hari.</p>
+    
+    <div class="sync-options">
+        <div class="sync-btn" onclick="startSync(30)">
+            <i class="fas fa-bolt"></i>
+            <div class="sync-title">Delta (30 Hari)</div>
+            <div class="sync-desc">Sangat Cepat. Cocok untuk update harian/mingguan reguler.</div>
+        </div>
+        <div class="sync-btn heavy" onclick="startSync(365)">
+            <i class="fas fa-calendar-alt"></i>
+            <div class="sync-title">1 Tahun (365 Hari)</div>
+            <div class="sync-desc">Sedang. Memuat ulang seluruh transaksi 1 tahun terakhir.</div>
+        </div>
+        <div class="sync-btn full" onclick="startSync(1825)">
+            <i class="fas fa-database"></i>
+            <div class="sync-title">Penuh (5 Tahun)</div>
+            <div class="sync-desc">Lambat. Gunakan hanya saat instalasi pertama (Initial Load).</div>
+        </div>
+    </div>
+
+    <div class="status-container" id="statusContainer" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h4 style="margin: 0;">Status Sinkronisasi</h4>
+            <span id="statusBadge" class="badge" style="background: var(--accent); color: white; padding: 4px 12px; border-radius: 12px;">Running</span>
+        </div>
+        
+        <div class="progress-wrapper">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        
+        <div class="log-box" id="logBox">
+            > Menunggu proses...<br>
+        </div>
+    </div>
+</div>
+
+<script>
+let statusInterval;
+
+function startSync(days) {
+    if(!confirm(`Anda yakin ingin memulai sinkronisasi untuk ${days} hari terakhir?`)) return;
+    
+    document.getElementById('statusContainer').style.display = 'block';
+    document.getElementById('progressBar').style.width = '5%';
+    addLog(`> Memulai perintah sinkronisasi (${days} hari)...`);
+    document.getElementById('statusBadge').innerText = 'Starting...';
+    document.getElementById('statusBadge').style.background = 'var(--accent)';
+
+    fetch('/api/duckdb/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days_back: days })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.status === 'started' || data.status === 'already_running') {
+            addLog(`> ${data.message}`);
+            startPolling();
+        } else {
+            addLog(`> Error: ${data.message}`);
+            document.getElementById('statusBadge').innerText = 'Error';
+            document.getElementById('statusBadge').style.background = '#ef4444';
+        }
+    })
+    .catch(err => {
+        addLog(`> Gagal mengirim perintah: ${err}`);
+    });
+}
+
+function startPolling() {
+    if(statusInterval) clearInterval(statusInterval);
+    statusInterval = setInterval(checkStatus, 2000);
+    checkStatus();
+}
+
+let lastMessage = "";
+function checkStatus() {
+    fetch('/api/duckdb/status')
+    .then(res => res.json())
+    .then(data => {
+        if(data.state === 'empty') return;
+        
+        if(data.message !== lastMessage) {
+            addLog(`> [${data.state.toUpperCase()}] ${data.message}`);
+            lastMessage = data.message;
+        }
+
+        document.getElementById('progressBar').style.width = `${data.progress || 0}%`;
+        
+        if(data.state === 'finished' || data.state === 'error') {
+            clearInterval(statusInterval);
+            document.getElementById('statusBadge').innerText = data.state === 'finished' ? 'Selesai' : 'Gagal';
+            document.getElementById('statusBadge').style.background = data.state === 'finished' ? '#10b981' : '#ef4444';
+        } else {
+            document.getElementById('statusBadge').innerText = 'Running';
+            document.getElementById('statusBadge').style.background = 'var(--accent)';
+        }
+    })
+    .catch(err => console.error(err));
+}
+
+function addLog(msg) {
+    const box = document.getElementById('logBox');
+    const time = new Date().toLocaleTimeString();
+    box.innerHTML += `[${time}] ${msg}<br>`;
+    box.scrollTop = box.scrollHeight;
+}
+
+// Check if running on page load
+document.addEventListener('DOMContentLoaded', () => {
+    fetch('/api/duckdb/status')
+    .then(res => res.json())
+    .then(data => {
+        if(data.state === 'starting' || data.state === 'running') {
+            document.getElementById('statusContainer').style.display = 'block';
+            startPolling();
+        }
+    });
+});
+</script>
+{% endblock %}

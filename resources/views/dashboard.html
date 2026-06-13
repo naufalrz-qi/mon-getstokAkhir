@@ -7,320 +7,162 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <!-- Chart.js Plugin DataLabels -->
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
-<style>
-    .dashboard-container {
-        padding: 1.5rem;
-        display: flex;
-        flex-direction: column;
-        gap: 2rem;
-    }
-    
-    /* Filter Bar */
-    .filter-bar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background: var(--bg-card);
-        padding: 1.2rem 2rem;
-        border-radius: var(--radius-lg);
-        box-shadow: var(--shadow-sm);
-        border: 1px solid var(--border-card);
-        backdrop-filter: blur(10px);
-    }
-    
-    .filter-group {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-    }
 
-    /* Sections */
-    .section-title {
-        font-size: 1.15rem;
-        font-weight: 700;
-        margin-bottom: 1rem;
-        color: var(--text-primary);
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-
-    .section-title i {
-        color: var(--accent);
-    }
-
-    /* KPI Grid */
-    .kpi-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-        gap: 1.5rem;
-    }
-
-    .kpi-card {
-        background: var(--bg-card);
-        padding: 1.5rem;
-        border-radius: var(--radius-lg);
-        box-shadow: var(--shadow-md);
-        border: 1px solid var(--border-card);
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-        position: relative;
-        overflow: hidden;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    
-    .kpi-card:hover {
-        transform: translateY(-4px);
-        box-shadow: var(--shadow-lg);
-    }
-    
-    .kpi-card::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 5px;
-    }
-    
-    .kpi-card.blue::before { background: var(--info); }
-    .kpi-card.green::before { background: var(--success); }
-    .kpi-card.purple::before { background: #8b5cf6; }
-    .kpi-card.orange::before { background: var(--warning); }
-    .kpi-card.red::before { background: var(--danger); }
-    .kpi-card.slate::before { background: #64748b; }
-
-    .kpi-icon {
-        position: absolute;
-        right: 1.5rem;
-        top: 1.5rem;
-        font-size: 2rem;
-        opacity: 0.1;
-        color: var(--text-primary);
-    }
-
-    .kpi-title {
-        color: var(--text-muted);
-        font-size: 0.8rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-
-    .kpi-value {
-        font-size: 1.75rem;
-        font-weight: 800;
-        color: var(--text-primary);
-        letter-spacing: -0.02em;
-    }
-
-    .kpi-subtext {
-        font-size: 0.85rem;
-        font-weight: 500;
-        color: var(--text-secondary);
-    }
-
-    /* Chart & Table Grids */
-    .bento-grid {
-        display: grid;
-        grid-template-columns: repeat(12, 1fr);
-        gap: 1.5rem;
-    }
-
-    .bento-card {
-        background: var(--bg-card);
-        padding: 1.5rem;
-        border-radius: var(--radius-lg);
-        box-shadow: var(--shadow-md);
-        border: 1px solid var(--border-card);
-        display: flex;
-        flex-direction: column;
-    }
-
-    .bento-card-title {
-        font-weight: 700;
-        font-size: 1rem;
-        color: var(--text-primary);
-        margin-bottom: 1.5rem;
-        padding-bottom: 0.75rem;
-        border-bottom: 1px solid var(--border-light);
-    }
-
-    .col-span-12 { grid-column: span 12; }
-    .col-span-8 { grid-column: span 8; }
-    .col-span-6 { grid-column: span 6; }
-    .col-span-4 { grid-column: span 4; }
-
-    @media (max-width: 1024px) {
-        .col-span-8, .col-span-6, .col-span-4 { grid-column: span 12; }
-    }
-
-    .chart-container {
-        position: relative;
-        height: 300px;
-        width: 100%;
-        flex: 1;
-    }
-
-    /* Modern Table inside Dashboard */
-    .dash-table-wrapper {
-        overflow-x: auto;
-        flex: 1;
-    }
-
-    .dash-table {
-        width: 100%;
-        border-collapse: separate;
-        border-spacing: 0;
-        font-size: 0.875rem;
-    }
-
-    .dash-table th {
-        text-align: left;
-        padding: 0.75rem 1rem;
-        color: var(--text-muted);
-        font-weight: 600;
-        border-bottom: 1px solid var(--border-card);
-        background: var(--table-header-bg);
-    }
-
-    .dash-table td {
-        padding: 0.75rem 1rem;
-        border-bottom: 1px solid var(--border-light);
-        color: var(--text-primary);
-    }
-
-    .dash-table tr:last-child td {
-        border-bottom: none;
-    }
-
-    .dash-table tbody tr:hover td {
-        background: var(--bg-hover);
-    }
-
-    .badge {
-        padding: 0.25rem 0.5rem;
-        border-radius: var(--radius-sm);
-        font-size: 0.75rem;
-        font-weight: 600;
-    }
-    .badge-danger { background: var(--danger-bg); color: var(--danger); }
-    .badge-warning { background: var(--warning-bg); color: var(--warning); }
-    
-    #loading-overlay {
-        position: fixed;
-        top: 0; left: 0; width: 100%; height: 100%;
-        background: var(--bg-glass);
-        backdrop-filter: blur(4px);
-        display: flex; flex-direction: column;
-        align-items: center; justify-content: center;
-        z-index: 9999;
-        visibility: hidden; opacity: 0;
-        transition: 0.3s ease;
-    }
-    #loading-overlay.active {
-        visibility: visible; opacity: 1;
-    }
-</style>
 {% endblock %}
 
 {% block content %}
-<!-- Loading Overlay -->
-<div id="loading-overlay">
-    <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status"></div>
-    <div class="mt-3 fw-semibold text-primary" id="loading-text">Memuat Dashboard...</div>
-</div>
-
 <div class="dashboard-container">
     <!-- Filter Bar -->
     <div class="filter-bar">
-        <div>
-            <h2 style="font-size: 1.5rem; font-weight: 800; margin: 0; color: var(--text-primary);">Dashboard Bisnis</h2>
-            <div style="color: var(--text-muted); font-size: 0.875rem; margin-top: 0.25rem;">
+        <div class="filter-bar-left">
+            <h2 class="filter-bar-title">
+                <i class="fas fa-tachometer-alt"></i>
+                {{ 'Dashboard Bisnis' if dashboard_type == 'bisnis' else 'Dashboard Operasional' }}
+            </h2>
+            <div class="filter-bar-subtitle">
                 Server: <strong id="current-server-name">Loading...</strong>
+                <span class="live-badge" id="live-indicator" style="display:none;">
+                    <span class="live-dot"></span> LIVE
+                </span>
             </div>
         </div>
         <div class="filter-group">
-            <label for="filter-mode" style="font-weight: 600;">Mode:</label>
-            <select id="filter-mode" class="form-select form-select-sm" style="width: auto; font-weight: 600; background-color: var(--bg-body); border-color: var(--border-card); color: var(--text-primary);">
-                <option value="single">Lokasi Saat Ini</option>
+            <div class="pill-toggle" id="mode-toggle">
+                <button class="pill active" data-value="single">📍 Lokasi Ini</button>
+                <button class="pill" data-value="global">🌐 Global</button>
+            </div>
+            <!-- Hidden real select to maintain backward compatibility with JS logic -->
+            <select id="filter-mode" style="display:none;">
+                <option value="single" selected>Lokasi Saat Ini</option>
                 <option value="global">Global (Semua Lokasi)</option>
             </select>
-            <label for="filter-tahun" style="font-weight: 600;">Tahun:</label>
-            <select id="filter-tahun" class="form-select form-select-sm" style="width: auto; min-width: 120px; font-weight: 600; background-color: var(--bg-body); border-color: var(--border-card); color: var(--text-primary);">
+
+            <select id="filter-tahun" class="filter-select">
                 <!-- Akan diisi via JS -->
             </select>
-            <button id="btn-refresh" class="btn btn-sm" style="background: var(--accent); color: white; font-weight: 600; border-radius: var(--radius-sm);">
-                <i class="fas fa-sync-alt"></i> Refresh
+            <div style="display: flex; flex-direction: column; align-items: flex-end; margin-right: 10px; margin-left: 10px;">
+                <small class="text-muted" style="font-size: 0.70rem; font-weight: bold;">Terakhir Sinkronisasi:</small>
+                <small id="last-sync-time" class="text-danger" style="font-size: 0.75rem; font-weight: bold;">Belum Tersedia</small>
+            </div>
+            <button id="btn-refresh" class="btn-refresh-icon" title="Refresh Data">
+                <i class="fas fa-sync-alt"></i>
             </button>
         </div>
     </div>
 
     <!-- SECTION 1: EXECUTIVE SUMMARY -->
-    <div>
-        <div class="section-title"><i class="fas fa-briefcase"></i> 1. Executive Summary</div>
+    {% if dashboard_type == 'bisnis' %}
+    <div class="dash-section">
+        <div class="section-title"><i class="fas fa-briefcase"></i> Executive Summary</div>
         <div class="kpi-grid">
             <div class="kpi-card blue">
-                <i class="fas fa-wallet kpi-icon"></i>
-                <div class="kpi-title">Total Penjualan</div>
-                <div class="kpi-value" id="kpi-penjualan">Rp 0</div>
-                <div class="kpi-subtext">Omset kotor seluruh lokasi (Non-Retail)</div>
+                <div class="kpi-card-content">
+                    <div class="kpi-header">
+                        <div class="kpi-icon-wrapper"><i class="fas fa-wallet"></i></div>
+                        <div class="trend-badge trend-up" style="display:none;" id="trend-penjualan">0%</div>
+                    </div>
+                    <div class="kpi-title">Total Penjualan</div>
+                    <div class="kpi-value" id="kpi-penjualan">
+                        <div class="skeleton skeleton-value"></div>
+                    </div>
+                    <div class="kpi-subtext">Omset</div>
+                </div>
             </div>
             <div class="kpi-card green">
-                <i class="fas fa-chart-line kpi-icon"></i>
-                <div class="kpi-title">Margin Keuntungan Bersih</div>
-                <div class="kpi-value" id="kpi-margin">0%</div>
-                <div class="kpi-subtext" id="kpi-laba">Laba: Rp 0</div>
+                <div class="kpi-card-content">
+                    <div class="kpi-header">
+                        <div class="kpi-icon-wrapper"><i class="fas fa-chart-line"></i></div>
+                        <div class="trend-badge trend-up" style="display:none;" id="trend-margin">0%</div>
+                    </div>
+                    <div class="kpi-title">Margin Keuntungan</div>
+                    <div class="kpi-value" id="kpi-margin">
+                        <div class="skeleton skeleton-value"></div>
+                    </div>
+                    <div class="kpi-subtext" id="kpi-laba">Laba: -</div>
+                </div>
             </div>
             <div class="kpi-card purple">
-                <i class="fas fa-receipt kpi-icon"></i>
-                <div class="kpi-title">Total Transaksi</div>
-                <div class="kpi-value" id="kpi-transaksi">0</div>
-                <div class="kpi-subtext">Struk/Faktur tercetak</div>
+                <div class="kpi-card-content">
+                    <div class="kpi-header">
+                        <div class="kpi-icon-wrapper"><i class="fas fa-receipt"></i></div>
+                    </div>
+                    <div class="kpi-title">Total Transaksi</div>
+                    <div class="kpi-value" id="kpi-transaksi">
+                        <div class="skeleton skeleton-value"></div>
+                    </div>
+                    <div class="kpi-subtext">Struk/Faktur tercetak</div>
+                </div>
             </div>
             <div class="kpi-card orange">
-                <i class="fas fa-shopping-basket kpi-icon"></i>
-                <div class="kpi-title">Avg. Basket Size</div>
-                <div class="kpi-value" id="kpi-basket-size">Rp 0</div>
-                <div class="kpi-subtext">Rata-rata per transaksi</div>
+                <div class="kpi-card-content">
+                    <div class="kpi-header">
+                        <div class="kpi-icon-wrapper"><i class="fas fa-shopping-basket"></i></div>
+                    </div>
+                    <div class="kpi-title">Avg. Basket Size</div>
+                    <div class="kpi-value" id="kpi-basket-size">
+                        <div class="skeleton skeleton-value"></div>
+                    </div>
+                    <div class="kpi-subtext">Rata-rata per transaksi</div>
+                </div>
             </div>
         </div>
-    </div>
 
-    <div class="bento-grid">
-        <div class="bento-card col-span-12">
-            <div class="bento-card-title" id="title-leaderboard">Leaderboard Divisi / Lokasi</div>
-            <div class="chart-container" style="height: 350px;">
-                <canvas id="chart-divisi"></canvas>
+        <div class="bento-grid">
+            <div class="bento-card col-span-12">
+                <div class="bento-card-title" id="title-leaderboard">Leaderboard Divisi / Lokasi</div>
+                <div class="chart-container" style="height: 350px;" id="chart-divisi-container">
+                    <div class="skeleton skeleton-chart"></div>
+                    <canvas id="chart-divisi" style="display:none;"></canvas>
+                </div>
             </div>
         </div>
     </div>
+    {% endif %}
 
     <!-- SECTION 2: INVENTARIS & STOK -->
-    <div>
-        <div class="section-title"><i class="fas fa-boxes"></i> 2. Inventaris & Stok</div>
+    <div class="dash-section">
+        <div class="section-title"><i class="fas fa-boxes"></i> Inventaris & Stok</div>
         <div class="kpi-grid" style="margin-bottom: 1.5rem;">
+            {% if dashboard_type == 'bisnis' %}
             <div class="kpi-card purple">
-                <i class="fas fa-coins kpi-icon"></i>
-                <div class="kpi-title">Nilai Aset Stok</div>
-                <div class="kpi-value" id="kpi-aset">Rp 0</div>
-                <div class="kpi-subtext">Total modal barang di gudang</div>
+                <div class="kpi-card-content">
+                    <div class="kpi-header">
+                        <div class="kpi-icon-wrapper"><i class="fas fa-coins"></i></div>
+                    </div>
+                    <div class="kpi-title">Nilai Aset Stok</div>
+                    <div class="kpi-value" id="kpi-aset">
+                        <div class="skeleton skeleton-value"></div>
+                    </div>
+                    <div class="kpi-subtext">Total modal barang di gudang</div>
+                </div>
             </div>
+            {% endif %}
             <div class="kpi-card orange">
-                <i class="fas fa-exclamation-triangle kpi-icon"></i>
-                <div class="kpi-title">Alert Stok Kritis</div>
-                <div class="kpi-value" id="kpi-stok-kritis">0 Item</div>
-                <div class="kpi-subtext">Segera reorder</div>
+                <div class="kpi-card-content">
+                    <div class="kpi-header">
+                        <div class="kpi-icon-wrapper"><i class="fas fa-exclamation-triangle"></i></div>
+                    </div>
+                    <div class="kpi-title">Alert Stok Kritis</div>
+                    <div class="kpi-value" id="kpi-stok-kritis">
+                        <div class="skeleton skeleton-value"></div>
+                    </div>
+                    <div class="kpi-subtext">Segera reorder</div>
+                </div>
             </div>
             <div class="kpi-card red">
-                <i class="fas fa-skull-crossbones kpi-icon"></i>
-                <div class="kpi-title">Dead Stock (Stok Mati)</div>
-                <div class="kpi-value" id="kpi-dead-stock">0 Item</div>
-                <div class="kpi-subtext">Tidak laku > 30 hari</div>
+                <div class="kpi-card-content">
+                    <div class="kpi-header">
+                        <div class="kpi-icon-wrapper"><i class="fas fa-skull-crossbones"></i></div>
+                    </div>
+                    <div class="kpi-title">Dead Stock</div>
+                    <div class="kpi-value" id="kpi-dead-stock">
+                        <div class="skeleton skeleton-value"></div>
+                    </div>
+                    <div class="kpi-subtext">Tidak laku > 30 hari</div>
+                </div>
             </div>
         </div>
-        
+
         <div class="bento-grid">
             <div class="bento-card col-span-6">
                 <div class="bento-card-title">Daftar Stok Kritis (Limit 10)</div>
@@ -334,7 +176,21 @@
                             </tr>
                         </thead>
                         <tbody id="table-stok-kritis">
-                            <tr><td colspan="3" class="text-center">Memuat data...</td></tr>
+                            <tr>
+                                <td colspan="3">
+                                    <div class="skeleton skeleton-table-row"></div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td colspan="3">
+                                    <div class="skeleton skeleton-table-row"></div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td colspan="3">
+                                    <div class="skeleton skeleton-table-row"></div>
+                                </td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
@@ -351,7 +207,21 @@
                             </tr>
                         </thead>
                         <tbody id="table-dead-stock">
-                            <tr><td colspan="3" class="text-center">Memuat data...</td></tr>
+                            <tr>
+                                <td colspan="3">
+                                    <div class="skeleton skeleton-table-row"></div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td colspan="3">
+                                    <div class="skeleton skeleton-table-row"></div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td colspan="3">
+                                    <div class="skeleton skeleton-table-row"></div>
+                                </td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
@@ -360,23 +230,95 @@
     </div>
 
     <!-- SECTION 3: ANALISIS PRODUK -->
-    <div>
-        <div class="section-title"><i class="fas fa-chart-pie"></i> 3. Analisis Produk & Performa</div>
+    <div class="dash-section">
+        <div class="section-title"><i class="fas fa-chart-pie"></i>Analisis Produk & Performa</div>
         <div class="bento-grid">
             <div class="bento-card col-span-8">
                 <div class="bento-card-title">Top 10 Fast-Moving Items (Produk Terlaris)</div>
-                <div class="chart-container">
-                    <canvas id="chart-barang"></canvas>
+                <div class="chart-container" id="chart-barang-container">
+                    <div class="skeleton skeleton-chart"></div>
+                    <canvas id="chart-barang" style="display:none;"></canvas>
                 </div>
             </div>
             <div class="bento-card col-span-4">
                 <div class="bento-card-title">Performa Kategori Produk</div>
-                <div class="chart-container">
-                    <canvas id="chart-kategori"></canvas>
+                <div class="chart-container" id="chart-kategori-container">
+                    <div class="skeleton skeleton-chart"></div>
+                    <canvas id="chart-kategori" style="display:none;"></canvas>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- SECTION 4: ANALISIS PELANGGAN -->
+    <div class="dash-section">
+        <div class="section-title"><i class="fas fa-users"></i> Analisis Pelanggan</div>
+        <div class="kpi-grid" style="margin-bottom: 1.5rem;">
+            <div class="kpi-card blue">
+                <div class="kpi-card-content">
+                    <div class="kpi-header">
+                        <div class="kpi-icon-wrapper"><i class="fas fa-user-check"></i></div>
+                    </div>
+                    <div class="kpi-title">Total Pelanggan Aktif</div>
+                    <div class="kpi-value" id="kpi-total-pelanggan">
+                        <div class="skeleton skeleton-value"></div>
+                    </div>
+                    <div class="kpi-subtext">Pelanggan unik bertransaksi</div>
+                </div>
+            </div>
+            <div class="kpi-card green">
+                <div class="kpi-card-content">
+                    <div class="kpi-header">
+                        <div class="kpi-icon-wrapper"><i class="fas fa-hand-holding-usd"></i></div>
+                    </div>
+                    <div class="kpi-title">Avg Spend / Pelanggan</div>
+                    <div class="kpi-value" id="kpi-avg-spend">
+                        <div class="skeleton skeleton-value"></div>
+                    </div>
+                    <div class="kpi-subtext">Rata-rata belanja per pelanggan</div>
+                </div>
+            </div>
+        </div>
+        <div class="bento-grid">
+            <div class="bento-card col-span-12">
+                <div class="bento-card-title">Top 10 Pelanggan (Leaderboard Omset)</div>
+                <div class="dash-table-wrapper">
+                    <table class="dash-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px">Rank</th>
+                                <th>Nama Pelanggan</th>
+                                <th>Total Transaksi</th>
+                                <th>Avg per Trx</th>
+                                <th style="text-align: right">Total Belanja</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-top-pelanggan">
+                            <tr>
+                                <td colspan="5">
+                                    <div class="skeleton skeleton-table-row"></div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td colspan="5">
+                                    <div class="skeleton skeleton-table-row"></div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td colspan="5">
+                                    <div class="skeleton skeleton-table-row"></div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    </div>
+
+</div>
 
 </div>
 
@@ -384,16 +326,7 @@
 
 {% block extra_js %}
 <script>
-    // Format Currency
-    const formatRp = (num) => {
-        return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
-    };
-
-    const formatNum = (num) => {
-        return new Intl.NumberFormat('id-ID').format(num);
-    };
-
-    // Chart.js Theme Management
+    
     function getCSSVar(varName) {
         return getComputedStyle(document.body).getPropertyValue(varName).trim();
     }
@@ -443,23 +376,102 @@
 
     let charts = {};
 
+    const formatRp = (num) => {
+        if (!num && num !== 0) return 'Rp0';
+        return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(num);
+    };
+
+    const formatNum = (num) => {
+        if (!num && num !== 0) return '0';
+        return new Intl.NumberFormat('id-ID').format(num);
+    };
+
+    function animateCounter(id, target, isCurrency=false) {
+        const el = document.getElementById(id);
+        if(!el) return;
+        const skel = el.querySelector('.skeleton');
+        if(skel) skel.remove();
+        
+        let current = 0;
+        const duration = 1000;
+        const stepTime = 20;
+        const steps = duration / stepTime;
+        const inc = target / steps;
+        
+        const timer = setInterval(() => {
+            current += inc;
+            if (current >= target) {
+                current = target;
+                clearInterval(timer);
+            }
+            if (isCurrency) {
+                el.innerText = formatRp(current).replace(',00', '');
+            } else {
+                el.innerText = formatNum(current);
+            }
+        }, stepTime);
+    }
+
     // Initial apply
     applyChartTheme();
+
+    function timeAgo(dateString) {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return dateString;
+        const seconds = Math.floor((new Date() - date) / 1000);
+        let interval = seconds / 31536000;
+        if (interval > 1) return Math.floor(interval) + " tahun yang lalu";
+        interval = seconds / 2592000;
+        if (interval > 1) return Math.floor(interval) + " bulan yang lalu";
+        interval = seconds / 86400;
+        if (interval > 1) return Math.floor(interval) + " hari yang lalu";
+        interval = seconds / 3600;
+        if (interval > 1) return Math.floor(interval) + " jam yang lalu";
+        interval = seconds / 60;
+        if (interval > 1) return Math.floor(interval) + " menit yang lalu";
+        return "Baru saja";
+    }
+
+    async function checkLastSyncTime() {
+        try {
+            const res = await fetch('/api/snapshot/status');
+            const json = await res.json();
+            const el = document.getElementById('last-sync-time');
+            if (json.has_snapshot && json.snapshot_info && json.snapshot_info.last_updated) {
+                const exactTime = json.snapshot_info.last_updated;
+                el.textContent = timeAgo(exactTime);
+                el.title = exactTime;
+                el.classList.remove('text-danger');
+                el.classList.add('text-success');
+            } else {
+                el.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Belum Tersedia';
+                el.classList.remove('text-success');
+                el.classList.add('text-danger');
+            }
+        } catch (e) {
+            console.error('Failed to get sync status', e);
+        }
+    }
 
     async function loadDashboardData() {
         const tahun = document.getElementById('filter-tahun').value;
         const mode = document.getElementById('filter-mode').value;
-        const overlay = document.getElementById('loading-overlay');
-        overlay.classList.add('active');
-        
+        const btnRefresh = document.getElementById('btn-refresh');
+        const iconRefresh = btnRefresh.querySelector('i');
+
+        iconRefresh.classList.add('fa-spin');
+
         document.getElementById('current-server-name').innerText = mode === 'global' ? 'Semua Lokasi (Global)' : (localStorage.getItem('arunika-server-name') || 'Belum Dipilih');
+        checkLastSyncTime();
 
         try {
             const res = await fetch(`/api/dashboard/summary?tahun=${tahun}&mode=${mode}`);
             const json = await res.json();
-            
+
             if (json.status === 'success') {
                 renderDashboard(json.data);
+                
             } else {
                 alert('Gagal memuat dashboard: ' + json.message);
             }
@@ -467,22 +479,36 @@
             console.error('Fetch error:', err);
             alert('Terjadi kesalahan jaringan.');
         } finally {
-            overlay.classList.remove('active');
+            iconRefresh.classList.remove('fa-spin');
         }
     }
 
     function renderDashboard(data) {
         // --- 1. EXECUTIVE SUMMARY ---
-        document.getElementById('kpi-penjualan').innerText = formatRp(data.kpi.total_penjualan || 0);
-        document.getElementById('kpi-margin').innerText = data.kpi.margin_persen + '%';
+        {% if dashboard_type == 'bisnis' %}
+        animateCounter('kpi-penjualan', data.kpi.total_penjualan || 0, true);
+
+        const elMargin = document.getElementById('kpi-margin');
+        const skeletonMargin = elMargin.querySelector('.skeleton');
+        if (skeletonMargin) skeletonMargin.remove();
+        elMargin.innerText = data.kpi.margin_persen + '%';
+
         document.getElementById('kpi-laba').innerText = 'Laba: ' + formatRp(data.kpi.laba_kotor || 0);
-        document.getElementById('kpi-transaksi').innerText = formatNum(data.kpi.total_transaksi || 0);
-        document.getElementById('kpi-basket-size').innerText = formatRp(data.kpi.avg_basket_size || 0);
-        
+        animateCounter('kpi-transaksi', data.kpi.total_transaksi || 0, false);
+        animateCounter('kpi-basket-size', data.kpi.avg_basket_size || 0, true);
+
         // Leaderboard Chart Title
         const mode = document.getElementById('filter-mode').value;
         document.getElementById('title-leaderboard').innerText = mode === 'global' ? 'Leaderboard Omset Lokasi' : 'Leaderboard Divisi';
-        
+
+        // Remove Chart Skeleton
+        const chartDivisiContainer = document.getElementById('chart-divisi-container');
+        if (chartDivisiContainer) {
+            const skel = chartDivisiContainer.querySelector('.skeleton');
+            if (skel) skel.remove();
+            document.getElementById('chart-divisi').style.display = 'block';
+        }
+
         // Leaderboard Lokasi Chart
         const divisiData = data.penjualan_per_divisi || [];
         renderBarChart('chart-divisi', {
@@ -490,26 +516,40 @@
             datasets: [{
                 label: 'Omset Penjualan (Rp)',
                 data: divisiData.map(d => d.total !== undefined ? d.total : d.nilai),
-                backgroundColor: 'rgba(96, 165, 250, 0.8)',
-                borderColor: 'rgb(59, 130, 246)',
-                borderWidth: 1,
-                borderRadius: 4
+                backgroundColor: function (context) {
+                    const ctx = context.chart.ctx;
+                    const gradient = ctx.createLinearGradient(0, 0, 0, 350);
+                    gradient.addColorStop(0, '#60a5fa');
+                    gradient.addColorStop(1, '#2563eb');
+                    return gradient;
+                },
+                borderColor: '#2563eb',
+                borderWidth: 0,
+                borderRadius: 6
             }]
         });
+        {% endif %}
 
         // --- 2. INVENTARIS & STOK ---
-        document.getElementById('kpi-aset').innerText = formatRp(data.kpi.nilai_inventori || 0);
+        {% if dashboard_type == 'bisnis' %}
+        animateCounter('kpi-aset', data.kpi.nilai_inventori || 0, true);
+        {% endif %}
+
         const stokKritis = data.stok_kritis || [];
         const deadStock = data.dead_stock || [];
-        document.getElementById('kpi-stok-kritis').innerText = stokKritis.length + ' Item';
-        document.getElementById('kpi-dead-stock').innerText = deadStock.length + ' Item';
+
+        animateCounter('kpi-stok-kritis', stokKritis.length, false);
+        document.getElementById('kpi-stok-kritis').innerHTML += ' Item';
+
+        animateCounter('kpi-dead-stock', deadStock.length, false);
+        document.getElementById('kpi-dead-stock').innerHTML += ' Item';
 
         // Table Stok Kritis
         let htmlKritis = '';
-        if(stokKritis.length === 0) {
+        if (stokKritis.length === 0) {
             htmlKritis = '<tr><td colspan="3" class="text-center">Aman, tidak ada stok kritis</td></tr>';
         } else {
-            stokKritis.slice(0,10).forEach(item => {
+            stokKritis.slice(0, 10).forEach(item => {
                 const lokasiBadge = item.lokasi ? ` <span class="badge" style="background: var(--bg-card); color: var(--text-muted); font-size: 0.7em; border: 1px solid var(--border-card);">${item.lokasi}</span>` : '';
                 htmlKritis += `<tr>
                     <td><div style="font-weight: 600">${item.barang}${lokasiBadge}</div></td>
@@ -522,10 +562,10 @@
 
         // Table Dead Stock
         let htmlDead = '';
-        if(deadStock.length === 0) {
+        if (deadStock.length === 0) {
             htmlDead = '<tr><td colspan="3" class="text-center">Bagus, tidak ada stok mati</td></tr>';
         } else {
-            deadStock.slice(0,10).forEach(item => {
+            deadStock.slice(0, 10).forEach(item => {
                 const lokasiBadge = item.lokasi ? ` <span class="badge" style="background: var(--bg-card); color: var(--text-muted); font-size: 0.7em; border: 1px solid var(--border-card);">${item.lokasi}</span>` : '';
                 htmlDead += `<tr>
                     <td><div style="font-weight: 600">${item.barang}${lokasiBadge}</div></td>
@@ -537,21 +577,41 @@
         document.getElementById('table-dead-stock').innerHTML = htmlDead;
 
         // --- 3. ANALISIS PRODUK ---
+        const chartBarangContainer = document.getElementById('chart-barang-container');
+        if (chartBarangContainer) {
+            const skel = chartBarangContainer.querySelector('.skeleton');
+            if (skel) skel.remove();
+            document.getElementById('chart-barang').style.display = 'block';
+        }
+
         const topBarang = data.top_barang_terlaris || [];
         renderHorizontalBarChart('chart-barang', {
-            labels: topBarang.map(d => {
+            labels: topBarang.map((d, i) => {
                 const name = d.barang || 'Unknown';
-                return name.length > 25 ? name.substring(0,25) + '...' : name;
+                const shortName = name.length > 25 ? name.substring(0, 25) + '...' : name;
+                return `${i + 1}. ${shortName}`;
             }),
             datasets: [{
                 label: 'Kuantitas Terjual',
                 data: topBarang.map(d => d.total_qty),
-                backgroundColor: 'rgba(74, 222, 128, 0.8)',
-                borderColor: 'rgb(34, 197, 94)',
-                borderWidth: 1,
+                backgroundColor: function (context) {
+                    const ctx = context.chart.ctx;
+                    const gradient = ctx.createLinearGradient(0, 0, 400, 0);
+                    gradient.addColorStop(0, '#4ade80');
+                    gradient.addColorStop(1, '#16a34a');
+                    return gradient;
+                },
+                borderWidth: 0,
                 borderRadius: 4
             }]
         });
+
+        const chartKategoriContainer = document.getElementById('chart-kategori-container');
+        if (chartKategoriContainer) {
+            const skel = chartKategoriContainer.querySelector('.skeleton');
+            if (skel) skel.remove();
+            document.getElementById('chart-kategori').style.display = 'block';
+        }
 
         const topKategori = data.top_kategori_laris || [];
         renderPieChart('chart-kategori', {
@@ -559,12 +619,53 @@
             datasets: [{
                 data: topKategori.map(d => d.total_qty),
                 backgroundColor: [
-                    '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', 
-                    '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef'
+                    '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+                    '#06b6d4', '#f97316', '#6366f1', '#ec4899', '#84cc16'
                 ],
                 borderWidth: 0
             }]
         });
+
+        // --- 4. ANALISIS PELANGGAN ---
+        animateCounter('kpi-total-pelanggan', data.kpi.total_pelanggan || 0, false);
+        animateCounter('kpi-avg-spend', data.kpi.avg_spend_customer || 0, true);
+
+        const topPelanggan = data.top_pelanggan || [];
+        let htmlPelanggan = '';
+        if (topPelanggan.length === 0) {
+            htmlPelanggan = '<tr><td colspan="5" class="text-center text-muted">Tidak ada data pelanggan</td></tr>';
+        } else {
+            const maxBelanja = topPelanggan.length > 0 ? topPelanggan[0].total_belanja : 1;
+
+            topPelanggan.forEach((item, index) => {
+                const rank = index + 1;
+                let rankHtml = rank;
+                if (rank === 1) rankHtml = '<div class="rank-badge gold">1</div>';
+                else if (rank === 2) rankHtml = '<div class="rank-badge silver">2</div>';
+                else if (rank === 3) rankHtml = '<div class="rank-badge bronze">3</div>';
+                else rankHtml = `<div class="rank-badge">${rank}</div>`;
+
+                const badge = (item.kd_customer && item.kd_customer.trim() !== '') ? '' : ' <span class="badge badge-warning" style="font-size:0.7em">Walk-in</span>';
+                const nama = item.nama_customer || 'Pelanggan Umum';
+                const avgTrx = item.total_transaksi > 0 ? item.total_belanja / item.total_transaksi : 0;
+
+                const barWidth = Math.max((item.total_belanja / maxBelanja) * 100, 5);
+
+                htmlPelanggan += `<tr>
+                    <td>${rankHtml}</td>
+                    <td><div style="font-weight: 600">${nama}${badge}</div></td>
+                    <td>${formatNum(item.total_transaksi)} x</td>
+                    <td>${formatRp(avgTrx)}</td>
+                    <td style="text-align: right; width: 30%">
+                        <div class="inline-bar-wrapper">
+                            <div class="inline-bar-bg"><div class="inline-bar-fill" style="width: ${barWidth}%"></div></div>
+                            <span style="font-weight: bold; color: var(--success); min-width: 90px; display: inline-block; text-align: right;">${formatRp(item.total_belanja)}</span>
+                        </div>
+                    </td>
+                </tr>`;
+            });
+        }
+        document.getElementById('table-top-pelanggan').innerHTML = htmlPelanggan;
     }
 
     function renderBarChart(id, dataObj) {
@@ -645,7 +746,7 @@
                 maintainAspectRatio: false,
                 cutout: '65%',
                 plugins: {
-                    legend: { 
+                    legend: {
                         position: 'right',
                         labels: { color: 'var(--text-primary)', font: { size: 11 } }
                     },
@@ -659,7 +760,7 @@
         // Init Filter Tahun
         const selectTahun = document.getElementById('filter-tahun');
         const currentYear = new Date().getFullYear();
-        
+
         const optSemua = document.createElement('option');
         optSemua.value = '';
         optSemua.textContent = 'Semua Tahun (5 th)';
@@ -680,16 +781,26 @@
             if (json.status === 'success' && json.server) {
                 document.getElementById('current-server-name').innerText = json.server.nama;
             }
-        } catch(e) {}
+        } catch (e) { }
+
+        // Pill Toggle Logic
+        const modePills = document.querySelectorAll('#mode-toggle .pill');
+        const modeSelect = document.getElementById('filter-mode');
+
+        modePills.forEach(pill => {
+            pill.addEventListener('click', (e) => {
+                modePills.forEach(p => p.classList.remove('active'));
+                pill.classList.add('active');
+                modeSelect.value = pill.getAttribute('data-value');
+                loadDashboardData();
+            });
+        });
 
         // Event Listeners
         document.getElementById('btn-refresh').addEventListener('click', loadDashboardData);
         selectTahun.addEventListener('change', loadDashboardData);
-        document.getElementById('filter-mode').addEventListener('change', () => {
-            loadDashboardData();
-        });
 
-        // Initial Load
+        // Load init
         loadDashboardData();
     });
 </script>

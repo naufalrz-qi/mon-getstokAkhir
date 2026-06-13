@@ -141,6 +141,20 @@ class SnapshotCore:
             ''')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_dashboard_transaksi_tahun ON dashboard_transaksi(tahun)')
 
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS dashboard_customer (
+                    kd_divisi       TEXT,
+                    kd_customer     TEXT,
+                    nama_customer   TEXT,
+                    total_transaksi INTEGER,
+                    total_belanja   REAL,
+                    bulan           INTEGER,
+                    tahun           INTEGER
+                )
+            ''')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_dashboard_customer_tahun ON dashboard_customer(tahun)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_dashboard_customer_id ON dashboard_customer(kd_customer)')
+
             conn.commit()
             return conn
 

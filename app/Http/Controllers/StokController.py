@@ -1,6 +1,7 @@
 from datetime import datetime
 from app.Models.Database import db_manager
 from app.Models.SnapshotManager import SnapshotManager
+from app.Services.SalesMonitoringService import SalesMonitoringService
 from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment
@@ -22,7 +23,15 @@ class StokController:
         server_key = session.get('selected_server')
         if not server_key:
             return render_template('index.html')
-        return render_template('dashboard.html')
+        return render_template('dashboard.html', dashboard_type='bisnis')
+
+    @staticmethod
+    def dashboard_stok_page():
+        """HTML Page: Stok Dashboard"""
+        server_key = session.get('selected_server')
+        if not server_key:
+            return render_template('index.html')
+        return render_template('dashboard.html', dashboard_type='stok')
 
     @staticmethod
     def index_page():
@@ -50,11 +59,19 @@ class StokController:
 
     @staticmethod
     def monitoring_transaksi_page():
-        """HTML Page: Monitoring Transaksi (Massal)"""
+        """HTML Page: Cek barang dengan/tanpa transaksi"""
         server_key = session.get('selected_server')
         if not server_key:
             return render_template('index.html')
         return render_template('monitoring_transaksi.html')
+
+    @staticmethod
+    def monitoring_penjualan_page():
+        """HTML Page: Monitoring Penjualan (On Demand)"""
+        server_key = session.get('selected_server')
+        if not server_key:
+            return render_template('index.html')
+        return render_template('monitoring_penjualan.html')
 
     @staticmethod
     def opname_page():
@@ -100,11 +117,11 @@ class StokController:
 
     @staticmethod
     def fetch_dashboard_summary():
-        """API: Get dashboard summary from local snapshot"""
+        """Ambil data summary untuk dashboard bisnis/stok"""
         server_key = session.get('selected_server')
         if not server_key:
-            return jsonify({'status': 'error', 'message': 'No server selected'}), 400
-            
+            return jsonify({'success': False, 'message': 'Pilih server dulu'}), 400
+        
         tahun = request.args.get('tahun')
         if tahun:
             try:
@@ -126,6 +143,28 @@ class StokController:
             return jsonify({'status': 'error', 'message': result['error']}), 500
             
         return jsonify({'status': 'success', 'data': result})
+
+    @staticmethod
+    def fetch_sales_monitoring():
+        """API: Ambil data monitoring penjualan on-demand"""
+        server_key = session.get('selected_server')
+        if not server_key:
+            return jsonify({'success': False, 'message': 'Pilih server dulu'}), 400
+            
+        start_date = request.args.get('start_date', datetime.now().strftime('%Y-%m-%d'))
+        end_date = request.args.get('end_date', datetime.now().strftime('%Y-%m-%d'))
+        view_name = request.args.get('view_name', 'mon_t_penjualan_per_nota')
+        
+        try:
+            # AUTO-SYNC THE REQUESTED DATE RANGE ON-THE-FLY
+            from app.Services.Snapshot.SalesDuckDBRunner import SalesDuckDBRunner
+            SalesDuckDBRunner.sync_date_range(server_key, start_date, end_date)
+            
+            svc = SalesMonitoringService()
+            result = svc.get_sales_data(server_key, start_date, end_date, view_name)
+            return jsonify({'success': True, 'columns': result['columns'], 'data': result['data']})
+        except Exception as e:
+            return jsonify({'success': False, 'message': str(e)}), 500
 
     @staticmethod
     def select_server():
@@ -1046,3 +1085,133 @@ class StokController:
 
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    # ──────────── DuckDB Sync APIs ────────────
+
+    @staticmethod
+    def sync_duckdb_page():
+        """Render halaman khusus untuk sinkronisasi DuckDB"""
+        server_key = session.get('selected_server')
+        if not server_key:
+            flash('Pilih server terlebih dahulu', 'error')
+            return redirect(url_for('web.dashboard_page'))
+            
+        servers = db_manager.get_available_servers()
+        if session.get('role') != 'super_admin':
+            allowed_servers = session.get('servers', [])
+            servers = [s for s in servers if s['key'] in allowed_servers]
+            
+        return render_template('sync_duckdb.html', 
+                             servers=servers,
+                             selected_server=server_key,
+                             role=session.get('role'))
+
+    @staticmethod
+    def trigger_duckdb_sync():
+        """API: Trigger background sync untuk DuckDB"""
+        try:
+            data = request.get_json() or {}
+            server_key = data.get('server_key') or session.get('selected_server')
+            if not server_key:
+                return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
+
+            days_back = data.get('days_back', 30)
+            
+            from app.Services.Snapshot.SalesDuckDBRunner import SalesDuckDBRunner
+            result = SalesDuckDBRunner.sync_sales_data(server_key, days_back=days_back)
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def check_duckdb_status():
+        """API: Cek status sync DuckDB"""
+        server_key = session.get('selected_server')
+        if not server_key:
+            return jsonify({'state': 'empty'})
+
+        from app.Services.Snapshot.SalesDuckDBRunner import SalesDuckDBRunner
+        status = SalesDuckDBRunner.get_status(server_key)
+        return jsonify(status)
+
+    @staticmethod
+    def mass_sync_duckdb_page():
+        return render_template('mass_sync_duckdb.html')
+
+    @staticmethod
+    def trigger_mass_duckdb_sync():
+        try:
+            data = request.get_json() or {}
+            days_back = int(data.get('days_back', 30))
+            servers = db_manager.get_available_servers()
+            from app.Services.Snapshot.SalesDuckDBRunner import SalesDuckDBRunner
+            for srv in servers:
+                if srv.get('type') == 'retail':
+                    continue
+                SalesDuckDBRunner.sync_sales_data(srv['key'], days_back=days_back)
+            return jsonify({'status': 'success', 'message': 'Mass sync dimulai untuk semua server'})
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def check_mass_duckdb_status():
+        try:
+            from app.Services.Snapshot.SalesDuckDBRunner import SalesDuckDBRunner
+            status = SalesDuckDBRunner.get_all_status()
+            return jsonify({'status': 'success', 'data': status})
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def dashboard_analytics_trend():
+        server_key = session.get('selected_server')
+        tahun = request.args.get('tahun', datetime.now().year)
+        if not server_key: return jsonify({'error': 'No server'}), 400
+        from app.Services.DashboardAnalyticsService import DashboardAnalyticsService
+        return jsonify(DashboardAnalyticsService.get_monthly_trend(server_key, int(tahun)))
+
+    @staticmethod
+    def dashboard_analytics_retention():
+        server_key = session.get('selected_server')
+        tahun = request.args.get('tahun', datetime.now().year)
+        if not server_key: return jsonify({'error': 'No server'}), 400
+        from app.Services.DashboardAnalyticsService import DashboardAnalyticsService
+        return jsonify(DashboardAnalyticsService.get_customer_retention(server_key, int(tahun)))
+
+    @staticmethod
+    def dashboard_analytics_heatmap():
+        server_key = session.get('selected_server')
+        tahun = request.args.get('tahun', datetime.now().year)
+        if not server_key: return jsonify({'error': 'No server'}), 400
+        from app.Services.DashboardAnalyticsService import DashboardAnalyticsService
+        return jsonify(DashboardAnalyticsService.get_traffic_heatmap(server_key, int(tahun)))
+
+    @staticmethod
+    def dashboard_analytics_validate():
+        server_key = session.get('selected_server')
+        tahun = request.args.get('tahun', datetime.now().year)
+        if not server_key: return jsonify({'error': 'No server'}), 400
+        from app.Services.DataValidationService import DataValidationService
+        return jsonify(DataValidationService.validate_accuracy(server_key, int(tahun)))
+
+    @staticmethod
+    def dashboard_analytics_radar():
+        tahun = request.args.get('tahun', datetime.now().year)
+        from app.Services.DashboardAnalyticsService import DashboardAnalyticsService
+        return jsonify(DashboardAnalyticsService.get_cross_branch_omset(int(tahun)))
+
+    @staticmethod
+    def dashboard_analytics_basket():
+        server_key = session.get('selected_server')
+        tahun = request.args.get('tahun', datetime.now().year)
+        if not server_key: return jsonify({'error': 'No server'}), 400
+        from app.Services.DashboardAnalyticsService import DashboardAnalyticsService
+        return jsonify(DashboardAnalyticsService.get_basket_composition(server_key, int(tahun)))
+
+    @staticmethod
+    def dashboard_analytics_stock_predict():
+        server_key = session.get('selected_server')
+        if not server_key: return jsonify({'error': 'No server'}), 400
+        from app.Services.DashboardAnalyticsService import DashboardAnalyticsService
+        return jsonify(DashboardAnalyticsService.get_stock_prediction(server_key))
+

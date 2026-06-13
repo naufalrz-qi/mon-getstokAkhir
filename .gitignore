@@ -43,3 +43,5 @@ grosirPusat_schema.txt
 check_dbs.py
 force_full_refresh.py
 test_*.py
+*.duckdb
+*.db

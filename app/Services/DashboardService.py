@@ -164,7 +164,38 @@ class DashboardService:
             except sqlite3.OperationalError:
                 pass
 
-            # 5. Dead stock (Ada stok, tapi tidak ada penjualan di dashboard_penjualan)
+            # 5. Customer Analytics
+            total_pelanggan = 0
+            total_belanja_pelanggan = 0
+            top_pelanggan = []
+            try:
+                query_cust_kpi = "SELECT COUNT(DISTINCT kd_customer) as total_pelanggan, SUM(total_belanja) as total_belanja FROM dashboard_customer"
+                if tahun:
+                    query_cust_kpi += " WHERE tahun = ?"
+                cursor.execute(query_cust_kpi, params)
+                row_cust = cursor.fetchone()
+                if row_cust:
+                    if row_cust['total_pelanggan']:
+                        total_pelanggan = row_cust['total_pelanggan']
+                    if row_cust['total_belanja']:
+                        total_belanja_pelanggan = row_cust['total_belanja']
+                    
+                query_top_cust = """
+                    SELECT kd_customer, nama_customer, 
+                           SUM(total_belanja) as total_belanja, 
+                           SUM(total_transaksi) as total_transaksi
+                    FROM dashboard_customer
+                    {}
+                    GROUP BY kd_customer, nama_customer
+                    ORDER BY total_belanja DESC
+                    LIMIT 10
+                """.format("WHERE tahun = ?" if tahun else "")
+                cursor.execute(query_top_cust, params)
+                top_pelanggan = [dict(row) for row in cursor.fetchall()]
+            except sqlite3.OperationalError:
+                pass
+
+            # 6. Dead stock (Ada stok, tapi tidak ada penjualan di dashboard_penjualan)
             cursor.execute('''
                 SELECT barang, kategori, stok_akhir
                 FROM stok_snapshot
@@ -185,6 +216,7 @@ class DashboardService:
                 margin_persen = (laba_kotor / total_penjualan) * 100
                 
             avg_basket_size = total_penjualan / total_transaksi if total_transaksi > 0 else 0
+            avg_spend_customer = total_belanja_pelanggan / total_pelanggan if total_pelanggan > 0 else 0
 
             # Hitung mutasi dan retur (karena kita tidak menyimpan tabelnya, kita estimasi atau hardcode dulu,
             # Atau bisa skip komposisi transaksi jika tidak lengkap)
@@ -202,10 +234,13 @@ class DashboardService:
                     "margin_persen": round(margin_persen, 2),
                     "total_transaksi": total_transaksi,
                     "avg_basket_size": avg_basket_size,
+                    "avg_spend_customer": avg_spend_customer,
+                    "total_belanja_pelanggan": total_belanja_pelanggan,
                     "nilai_inventori": kpi_stok.get("nilai_inventori") or 0,
                     "total_sku": kpi_stok.get("total_sku") or 0,
                     "stok_habis": kpi_stok.get("stok_habis") or 0,
                     "stok_rendah": kpi_stok.get("stok_rendah") or 0,
+                    "total_pelanggan": total_pelanggan,
                 },
                 "penjualan_per_divisi": penjualan_per_divisi,
                 "top_kategori_laris": top_kategori_laris,
@@ -217,6 +252,7 @@ class DashboardService:
                 "top_margin": top_margin,
                 "stok_kritis": stok_kritis,
                 "dead_stock": dead_stock,
+                "top_pelanggan": top_pelanggan,
             }
             
             cls._cache[cache_key] = {
@@ -240,12 +276,14 @@ class DashboardService:
         
         global_kpi = {
             "total_penjualan": 0, "total_pembelian": 0, "laba_kotor": 0, "total_transaksi": 0, 
-            "nilai_inventori": 0, "total_sku": 0, "stok_habis": 0, "stok_rendah": 0
+            "nilai_inventori": 0, "total_sku": 0, "stok_habis": 0, "stok_rendah": 0, "total_pelanggan": 0,
+            "total_belanja_pelanggan": 0
         }
         cabang_leaderboard = []
         all_top_barang = defaultdict(lambda: [0, 0])
         all_top_kategori = defaultdict(float)
         all_top_merk = defaultdict(float)
+        all_top_pelanggan = defaultdict(lambda: [0, 0])
         all_dead_stock = []
         all_stok_kritis = []
         
@@ -286,6 +324,14 @@ class DashboardService:
                     
                 for mrk in res.get('top_merk_laris', []):
                     all_top_merk[mrk['merk']] += mrk['total_qty']
+                    
+                for c in res.get('top_pelanggan', []):
+                    key = (c['kd_customer'], c['nama_customer'])
+                    all_top_pelanggan[key][0] += c['total_belanja']
+                    all_top_pelanggan[key][1] += c['total_transaksi']
+                    
+                global_kpi['total_pelanggan'] += kpi.get('total_pelanggan', 0)
+                global_kpi['total_belanja_pelanggan'] += kpi.get('total_belanja_pelanggan', 0)
             
             # Stok selalu digabungkan (baik gudang maupun grosir)
             for k in ["nilai_inventori", "total_sku", "stok_habis", "stok_rendah"]:
@@ -310,6 +356,9 @@ class DashboardService:
         top_merk = [{'merk': k, 'total_qty': v} for k, v in all_top_merk.items()]
         top_merk.sort(key=lambda x: x['total_qty'], reverse=True)
         
+        top_pelanggan = [{'kd_customer': k[0], 'nama_customer': k[1], 'total_belanja': v[0], 'total_transaksi': v[1]} for k, v in all_top_pelanggan.items()]
+        top_pelanggan.sort(key=lambda x: x['total_belanja'], reverse=True)
+        
         all_dead_stock.sort(key=lambda x: x['stok_akhir'], reverse=True)
         
         if global_kpi["total_penjualan"] > 0:
@@ -321,6 +370,12 @@ class DashboardService:
             global_kpi["avg_basket_size"] = global_kpi["total_penjualan"] / global_kpi["total_transaksi"]
         else:
             global_kpi["avg_basket_size"] = 0
+            
+        # Avg spend per customer
+        if global_kpi["total_pelanggan"] > 0:
+            global_kpi["avg_spend_customer"] = global_kpi["total_belanja_pelanggan"] / global_kpi["total_pelanggan"]
+        else:
+            global_kpi["avg_spend_customer"] = 0
         
         return {
             "kpi": global_kpi,
@@ -328,6 +383,7 @@ class DashboardService:
             "top_barang_terlaris": top_barang[:10],
             "top_kategori_laris": top_kategori[:10],
             "top_merk_laris": top_merk[:10],
+            "top_pelanggan": top_pelanggan[:10],
             "dead_stock": all_dead_stock[:20],
             "stok_kritis": all_stok_kritis[:20],
             "status_stok": {

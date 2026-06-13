@@ -47,23 +47,41 @@ def register_routes(app):
     # ==========================================================
     # Web Routes (HTML Pages) — semua butuh login
     # ==========================================================
-    Route.get('/dashboard', login(StokController.dashboard_page))
+    Route.get('/dashboard', menu('dashboard_bisnis')(StokController.dashboard_page))
+    Route.get('/dashboard-stok', menu('dashboard_stok')(StokController.dashboard_stok_page))
     Route.get('/', login(StokController.index_page))
     Route.get('/stok/index', login(StokController.index_page))
     Route.get('/stok/', menu('stok_index')(StokController.monitoring_page))
     Route.get('/stok/histori', menu('stok_histori')(StokController.histori_page))
     Route.get('/mon/transaksi', menu('stok_data_transaksi')(StokController.monitoring_transaksi_page))
+    Route.get('/mon/penjualan', menu('stok_data_transaksi')(StokController.monitoring_penjualan_page))
     Route.get('/stok/opname', menu('stok_opname')(StokController.opname_page))
     Route.get('/master/update-barang', menu('master_update')(StokController.update_barang_page))
     Route.get('/stok/servers', superadmin(ServerController.servers_page))
     Route.get('/stok/mass-refresh', admin(StokController.mass_refresh_page))
+    Route.get('/mon/sync-duckdb', admin(StokController.sync_duckdb_page))
+    Route.get('/mon/mass-sync-duckdb', admin(StokController.mass_sync_duckdb_page))
 
     # API endpoints
     Route.get('/api/dashboard/summary', login(StokController.fetch_dashboard_summary))
+    Route.get('/api/dashboard/trend', menu('dashboard_bisnis')(StokController.dashboard_analytics_trend))
+    Route.get('/api/dashboard/retention', menu('dashboard_bisnis')(StokController.dashboard_analytics_retention))
+    Route.get('/api/dashboard/heatmap', menu('dashboard_bisnis')(StokController.dashboard_analytics_heatmap))
+    Route.get('/api/dashboard/validate', menu('dashboard_bisnis')(StokController.dashboard_analytics_validate))
+    Route.get('/api/dashboard/radar', menu('dashboard_bisnis')(StokController.dashboard_analytics_radar))
+    Route.get('/api/dashboard/basket', menu('dashboard_bisnis')(StokController.dashboard_analytics_basket))
+    Route.get('/api/dashboard/stock-predict', menu('dashboard_bisnis')(StokController.dashboard_analytics_stock_predict))
+
     Route.get('/stok/api/monitoring', menu('stok_index')(StokController.fetch_monitoring_data))
+    Route.get('/api/monitoring/penjualan', menu('stok_data_transaksi')(StokController.fetch_sales_monitoring))
     Route.get('/stok/api/histori', menu('stok_histori')(StokController.fetch_barang_histori))
     Route.get('/master/api/barang', login(StokController.fetch_barang_data))
     Route.post('/master/api/barang/update', menu('master_update')(StokController.update_barang))
+    
+    Route.post('/api/duckdb/sync', admin(StokController.trigger_duckdb_sync))
+    Route.get('/api/duckdb/status', login(StokController.check_duckdb_status))
+    Route.post('/api/duckdb/mass-sync', admin(StokController.trigger_mass_duckdb_sync))
+    Route.get('/api/duckdb/mass-status', login(StokController.check_mass_duckdb_status))
     # ==========================================================
     # API Routes : Authentication (publik untuk login/logout)
     # ==========================================================

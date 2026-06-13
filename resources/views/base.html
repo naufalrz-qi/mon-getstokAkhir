@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -34,7 +35,12 @@
         <nav class="sidebar-nav">
             <!-- Ringkasan -->
             <div class="sidebar-section-label">Ringkasan</div>
-            <a href="/dashboard" class="sidebar-nav-item"><i class="fas fa-tachometer-alt"></i><span>Dashboard</span></a>
+            {% if session.get('role') == 'super_admin' or 'dashboard_bisnis' in session.get('menus', []) %}
+            <a href="/dashboard" class="sidebar-nav-item"><i class="fas fa-tachometer-alt"></i><span>Dashboard Bisnis</span></a>
+            {% endif %}
+            {% if session.get('role') == 'super_admin' or 'dashboard_stok' in session.get('menus', []) %}
+            <a href="/dashboard-stok" class="sidebar-nav-item"><i class="fas fa-box-open"></i><span>Dashboard</span></a>
+            {% endif %}
 
             <!-- Stok -->
             {% if session.get('role') == 'super_admin' or 'stok_index' in session.get('menus', []) or 'stok_histori' in session.get('menus', []) or 'stok_opname' in session.get('menus', []) %}
@@ -54,6 +60,7 @@
             {% if session.get('role') == 'super_admin' or 'stok_data_transaksi' in session.get('menus', []) %}
             <div class="sidebar-section-label">Transaksi</div>
             <a href="/mon/transaksi" class="sidebar-nav-item"><i class="fas fa-file-invoice-dollar"></i><span>Monitoring Transaksi</span></a>
+            <a href="/mon/penjualan" class="sidebar-nav-item"><i class="fas fa-chart-pie"></i><span>Monitoring Penjualan</span></a>
             {% endif %}
 
             <!-- Data Master -->
@@ -66,7 +73,8 @@
             <div class="sidebar-section-label">Utilitas</div>
             <a href="/stok/index" class="sidebar-nav-item"><i class="fas fa-server"></i><span>Pilih Server</span></a>
             {% if session.get('role') == 'super_admin' or 'mass_refresh' in session.get('menus', []) %}
-            <a href="/stok/mass-refresh" class="sidebar-nav-item"><i class="fas fa-sync"></i><span>Mass Refresh</span></a>
+            <a href="/stok/mass-refresh" class="sidebar-nav-item"><i class="fas fa-sync"></i><span>Mass Refresh In-Mem</span></a>
+            <a href="/mon/mass-sync-duckdb" class="sidebar-nav-item"><i class="fas fa-layer-group"></i><span>Mass Sync DuckDB</span></a>
             {% endif %}
 
             <!-- Administrasi (super_admin) -->
@@ -79,10 +87,82 @@
         </nav>
 
         <div class="sidebar-footer">
-            <div class="sidebar-server-badge" id="current-server-badge">
-                <span class="pulse"></span>
-                <span id="server-name">Belum dipilih</span>
+            <div class="mb-3 px-3 w-100">
+                <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem; display: block;">Cabang Aktif</label>
+                <select id="global-server-select" class="form-select form-select-sm" style="background: var(--surface); color: var(--text-main); border-color: var(--border); border-radius: 8px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                    <option value="">Memuat Cabang...</option>
+                </select>
             </div>
+            
+            <script>
+                document.addEventListener('DOMContentLoaded', () => {
+                    const serverSelect = document.getElementById('global-server-select');
+                    
+                    // Fetch available servers
+                    fetch('/stok/server-list')
+                        .then(r => r.json())
+                        .then(data => {
+                            if (data.status === 'success' && data.servers.length > 0) {
+                                serverSelect.innerHTML = '';
+                                // Get currently active server from session API
+                                fetch('/api/stok/current-server')
+                                    .then(res => res.json())
+                                    .then(currData => {
+                                        const currentKey = currData.server ? currData.server.key : null;
+                                        
+                                        data.servers.forEach(srv => {
+                                            const opt = document.createElement('option');
+                                            opt.value = srv.key;
+                                            opt.textContent = srv.name;
+                                            if(srv.key === currentKey) opt.selected = true;
+                                            serverSelect.appendChild(opt);
+                                        });
+                                    }).catch(() => {
+                                        // Fallback if current-server fails
+                                        data.servers.forEach(srv => {
+                                            const opt = document.createElement('option');
+                                            opt.value = srv.key;
+                                            opt.textContent = srv.name;
+                                            serverSelect.appendChild(opt);
+                                        });
+                                    });
+                            } else {
+                                serverSelect.innerHTML = '<option value="">Tidak ada cabang</option>';
+                            }
+                        });
+
+                    // Switch server on change
+                    serverSelect.addEventListener('change', (e) => {
+                        const newServer = e.target.value;
+                        if(!newServer) return;
+                        
+                        serverSelect.disabled = true;
+                        const originalText = serverSelect.options[serverSelect.selectedIndex].text;
+                        serverSelect.options[serverSelect.selectedIndex].text = 'Menghubungkan...';
+
+                        fetch('/stok/select-server', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({server_key: newServer})
+                        })
+                        .then(r => r.json())
+                        .then(res => {
+                            if (res.status === 'success') {
+                                window.location.reload();
+                            } else {
+                                alert(res.message);
+                                serverSelect.disabled = false;
+                                serverSelect.options[serverSelect.selectedIndex].text = originalText;
+                            }
+                        })
+                        .catch(err => {
+                            alert('Gagal menghubungkan ke cabang.');
+                            serverSelect.disabled = false;
+                            serverSelect.options[serverSelect.selectedIndex].text = originalText;
+                        });
+                    });
+                });
+            </script>
 
             <button class="theme-toggle-btn" onclick="toggleTheme()" id="themeToggleBtn">
                 <i class="fas fa-sun" id="themeIcon"></i>
