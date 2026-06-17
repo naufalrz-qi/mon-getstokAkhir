@@ -88,10 +88,15 @@
 
         <div class="sidebar-footer">
             <div class="mb-3 px-3 w-100">
-                <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem; display: block;">Cabang Aktif</label>
-                <select id="global-server-select" class="form-select form-select-sm" style="background: var(--surface); color: var(--text-main); border-color: var(--border); border-radius: 8px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-                    <option value="">Memuat Cabang...</option>
-                </select>
+                <label style="font-size: 0.75rem; color: var(--sidebar-text); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 6px;">
+                    <i class="fas fa-server"></i> Server Aktif
+                </label>
+                <div style="position: relative;">
+                    <select id="global-server-select" class="form-select form-select-sm" style="background: var(--sidebar-hover-bg); color: #ffffff; border: 1px solid var(--sidebar-border); border-radius: 8px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1); font-weight: 500; appearance: none; padding-right: 2rem;">
+                        <option value="" style="background: var(--sidebar-bg); color: #ffffff;">Memuat Server...</option>
+                    </select>
+                    <i class="fas fa-chevron-down" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--sidebar-text); font-size: 0.8rem;"></i>
+                </div>
             </div>
             
             <script>
@@ -105,15 +110,17 @@
                             if (data.status === 'success' && data.servers.length > 0) {
                                 serverSelect.innerHTML = '';
                                 // Get currently active server from session API
-                                fetch('/api/stok/current-server')
+                                fetch('/stok/get-current-server')
                                     .then(res => res.json())
                                     .then(currData => {
-                                        const currentKey = currData.server ? currData.server.key : null;
+                                        const currentKey = (currData.status === 'success' && currData.server) ? currData.server.key : null;
                                         
                                         data.servers.forEach(srv => {
                                             const opt = document.createElement('option');
                                             opt.value = srv.key;
                                             opt.textContent = srv.name;
+                                            opt.style.background = 'var(--sidebar-bg)';
+                                            opt.style.color = '#ffffff';
                                             if(srv.key === currentKey) opt.selected = true;
                                             serverSelect.appendChild(opt);
                                         });
@@ -123,11 +130,13 @@
                                             const opt = document.createElement('option');
                                             opt.value = srv.key;
                                             opt.textContent = srv.name;
+                                            opt.style.background = 'var(--sidebar-bg)';
+                                            opt.style.color = '#ffffff';
                                             serverSelect.appendChild(opt);
                                         });
                                     });
                             } else {
-                                serverSelect.innerHTML = '<option value="">Tidak ada cabang</option>';
+                                serverSelect.innerHTML = '<option value="" style="background: var(--sidebar-bg); color: #ffffff;">Tidak ada server</option>';
                             }
                         });
 
@@ -156,7 +165,7 @@
                             }
                         })
                         .catch(err => {
-                            alert('Gagal menghubungkan ke cabang.');
+                            alert('Gagal menghubungkan ke server.');
                             serverSelect.disabled = false;
                             serverSelect.options[serverSelect.selectedIndex].text = originalText;
                         });

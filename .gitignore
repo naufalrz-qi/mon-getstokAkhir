@@ -41,7 +41,62 @@ grosirPusat_schema.txt
 
 # Debug scripts
 check_dbs.py
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# SQLite snapshots (local per-server data)
+database/snapshots/*.db
+
+# Environment / secrets
+.env
+*.env
+database/servers.json
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs
+*.log
+
+sketch.txt
+grosirPusat_schema.txt
+
+# Debug scripts
+check_dbs.py
 force_full_refresh.py
 test_*.py
 *.duckdb
 *.db
+app.db
+
+# Databases and Snapshots
+snpshot/
+snapshot/
+
+# Scratch and Output files
+out.js
+out.txt
+check.js
+test.json
+debug_delta.py
