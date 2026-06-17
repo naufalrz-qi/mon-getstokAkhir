@@ -58,6 +58,14 @@ class StokController:
         return render_template('histori.html')
 
     @staticmethod
+    def perhitungan_stok_page():
+        """HTML Page: Perhitungan Stok via Transaksi"""
+        server_key = session.get('selected_server')
+        if not server_key:
+            return render_template('index.html')
+        return render_template('perhitungan_stok.html')
+
+    @staticmethod
     def monitoring_transaksi_page():
         """HTML Page: Cek barang dengan/tanpa transaksi"""
         server_key = session.get('selected_server')
@@ -1207,6 +1215,141 @@ class StokController:
         if not server_key: return jsonify({'error': 'No server'}), 400
         from app.Services.DashboardAnalyticsService import DashboardAnalyticsService
         return jsonify(DashboardAnalyticsService.get_basket_composition(server_key, int(tahun)))
+
+    # ──────────── Perhitungan Stok APIs ────────────
+
+    @staticmethod
+    def trigger_perhitungan_stok():
+        """API: Trigger perhitungan stok di background"""
+        try:
+            data = request.get_json() or {}
+            server_key = session.get('selected_server')
+            start_date = data.get('start_date')
+            end_date = data.get('end_date')
+
+            if not server_key or not start_date or not end_date:
+                return jsonify({'status': 'error', 'message': 'Missing parameters'}), 400
+
+            from app.Services.Snapshot.SnapshotRunner import SnapshotRunner
+            result = SnapshotRunner.trigger_perhitungan_stok(server_key, start_date, end_date)
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def status_perhitungan_stok():
+        """API: Cek status perhitungan stok"""
+        server_key = session.get('selected_server')
+        if not server_key:
+            return jsonify({'state': 'empty'})
+
+        from app.Services.Snapshot.SnapshotState import SnapshotState
+        status = SnapshotState._perhitungan_status.get(server_key)
+        if not status:
+            return jsonify({'state': 'empty'})
+        return jsonify(status)
+
+    @staticmethod
+    def fetch_perhitungan_stok():
+        """API: Fetch data perhitungan stok"""
+        server_key = session.get('selected_server')
+        if not server_key:
+            return jsonify({'status': 'error', 'message': 'Pilih server dulu'}), 400
+
+        search_kode = request.args.get('search_kode')
+        search_nama = request.args.get('search_nama')
+        divisi = request.args.get('divisi')
+        kategori = request.args.get('kategori')
+        merk = request.args.get('merk')
+        
+        limit = request.args.get('limit')
+        if limit and limit.isdigit():
+            limit = int(limit)
+        else:
+            limit = 50
+            
+        offset = request.args.get('offset', 0)
+        if str(offset).isdigit():
+            offset = int(offset)
+            
+        sort_by = request.args.get('sort_by', 'nominal')
+        sort_order = request.args.get('sort_order', 'desc')
+
+        from app.Services.Snapshot.SnapshotQuery import SnapshotQuery
+        result = SnapshotQuery.search_perhitungan(
+            server_key=server_key,
+            search_kode=search_kode,
+            search_nama=search_nama,
+            divisi=divisi,
+            kategori=kategori,
+            merk=merk,
+            limit=limit,
+            offset=offset,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
+
+        return jsonify(result)
+
+    @staticmethod
+    def export_perhitungan_stok_xlsx():
+        """API: Export perhitungan stok ke XLSX"""
+        server_key = session.get('selected_server')
+        if not server_key:
+            return "Pilih server dulu", 400
+
+        search_kode = request.args.get('search_kode')
+        search_nama = request.args.get('search_nama')
+        divisi = request.args.get('divisi')
+        kategori = request.args.get('kategori')
+        merk = request.args.get('merk')
+
+        from app.Services.Snapshot.SnapshotQuery import SnapshotQuery
+        result = SnapshotQuery.search_perhitungan(
+            server_key=server_key,
+            search_kode=search_kode,
+            search_nama=search_nama,
+            divisi=divisi,
+            kategori=kategori,
+            merk=merk,
+            limit=1000000,
+            offset=0
+        )
+
+        if result.get('status') != 'success':
+            return result.get('message', 'Failed to fetch data'), 400
+
+        data = result['data']
+        
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Perhitungan Stok"
+
+        headers = ['Kode Divisi', 'Divisi', 'Kode Barang', 'Barang', 'Kategori', 'Merk', 'Stok Akhir', 'Harga Avg', 'Harga Jual', 'Nominal', 'Harga Beli Akhir']
+        ws.append(headers)
+        
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal='center')
+
+        for row in data:
+            ws.append([
+                row.get('Kode Divisi'), row.get('Divisi'), row.get('Kode Barang'),
+                row.get('Barang'), row.get('Kategori'), row.get('Merk'),
+                row.get('Stok Akhir'), row.get('Harga Avg'), row.get('Harga Jual'),
+                row.get('Nominal'), row.get('Harga Beli Akhir')
+            ])
+
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=f"Perhitungan_Stok_{server_key}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
     @staticmethod
     def dashboard_analytics_stock_predict():

@@ -47,6 +47,7 @@
             <div class="sidebar-section-label">Stok</div>
             {% if session.get('role') == 'super_admin' or 'stok_index' in session.get('menus', []) %}
             <a href="/stok/" class="sidebar-nav-item"><i class="fas fa-chart-line"></i><span>Stok Akhir Item</span></a>
+            <a href="/stok/perhitungan" class="sidebar-nav-item"><i class="fas fa-calculator"></i><span>Perhitungan Stok</span></a>
             {% endif %}
             {% if session.get('role') == 'super_admin' or 'stok_histori' in session.get('menus', []) %}
             <a href="/stok/histori" class="sidebar-nav-item"><i class="fas fa-history"></i><span>Histori Barang</span></a>

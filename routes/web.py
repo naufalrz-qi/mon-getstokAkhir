@@ -73,6 +73,11 @@ def register_routes(app):
     Route.get('/api/dashboard/stock-predict', menu('dashboard_bisnis')(StokController.dashboard_analytics_stock_predict))
 
     Route.get('/stok/api/monitoring', menu('stok_index')(StokController.fetch_monitoring_data))
+    Route.get('/stok/perhitungan', menu('stok_index')(StokController.perhitungan_stok_page))
+    Route.post('/stok/api/perhitungan/trigger', menu('stok_index')(StokController.trigger_perhitungan_stok))
+    Route.get('/stok/api/perhitungan/status', menu('stok_index')(StokController.status_perhitungan_stok))
+    Route.get('/stok/api/perhitungan/data', menu('stok_index')(StokController.fetch_perhitungan_stok))
+    Route.get('/stok/export/perhitungan', menu('stok_index')(StokController.export_perhitungan_stok_xlsx))
     Route.get('/api/monitoring/penjualan', menu('stok_data_transaksi')(StokController.fetch_sales_monitoring))
     Route.get('/stok/api/histori', menu('stok_histori')(StokController.fetch_barang_histori))
     Route.get('/master/api/barang', login(StokController.fetch_barang_data))
