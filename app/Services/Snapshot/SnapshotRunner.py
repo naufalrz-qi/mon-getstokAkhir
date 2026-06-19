@@ -186,31 +186,36 @@ class SnapshotRunner:
 
 
                 UNION ALL
-                -- Transaksi Barang (Penyesuaian)
-                SELECT t.kd_divisi, d.kd_barang, 
-                       CASE WHEN t.jenis = 'Masuk' THEN d.qty * COALESCE(s.jumlah, 1) ELSE 0 END AS debet,
-                       CASE WHEN t.jenis = 'Keluar' THEN d.qty * COALESCE(s.jumlah, 1) ELSE 0 END AS kredit
-                FROM t_transaksi_barang_detail d (NOLOCK)
-                INNER JOIN t_transaksi_barang t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+                -- Opname Masuk
+                SELECT d.kd_divisi, d.kd_barang, d.qty * COALESCE(s.jumlah, 1) AS debet, 0 AS kredit
+                FROM t_opname_stok d (NOLOCK)
                 LEFT JOIN m_barang_satuan s (NOLOCK) ON d.kd_barang = s.kd_barang AND d.kd_satuan = s.kd_satuan
-                WHERE CAST(t.tanggal AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
+                WHERE CAST(d.tanggal AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
+                  AND d.status = 2
+
+                UNION ALL
+                -- Opname Keluar
+                SELECT d.kd_divisi, d.kd_barang, 0 AS debet, d.qty * COALESCE(s.jumlah, 1) AS kredit
+                FROM t_opname_stok d (NOLOCK)
+                LEFT JOIN m_barang_satuan s (NOLOCK) ON d.kd_barang = s.kd_barang AND d.kd_satuan = s.kd_satuan
+                WHERE CAST(d.tanggal AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
+                  AND d.status <> 2
             ) AS all_trans
             GROUP BY kd_divisi, kd_barang
             """
             
-            params = [start_date, end_date] * 7
+            params = [start_date, end_date] * 8
 
-            if use_stok_awal:
-                stok_awal_query = """
-                UNION ALL
-                -- Stok Awal Aktual
-                SELECT bd.kd_divisi, bd.kd_barang, bd.stok_awal AS debet, 0 AS kredit
-                FROM m_barang_divisi bd (NOLOCK)
-                INNER JOIN m_barang b (NOLOCK) ON bd.kd_barang = b.kd_barang
-                INNER JOIN m_kategori k (NOLOCK) ON b.kd_kategori = k.kd_kategori
-                WHERE k.status <> 2 OR k.status IS NULL
-                """
-                query = query.replace(") AS all_trans", stok_awal_query + "\n            ) AS all_trans")
+            stok_awal_query = """
+            UNION ALL
+            -- Stok Awal Aktual
+            SELECT bd.kd_divisi, bd.kd_barang, bd.stok_awal AS debet, 0 AS kredit
+            FROM m_barang_divisi bd (NOLOCK)
+            INNER JOIN m_barang b (NOLOCK) ON bd.kd_barang = b.kd_barang
+            INNER JOIN m_kategori k (NOLOCK) ON b.kd_kategori = k.kd_kategori
+            WHERE k.status <> 2 OR k.status IS NULL
+            """
+            query = query.replace(") AS all_trans", stok_awal_query + "\n            ) AS all_trans")
             
             net_stok_map = {}
             conn = None
