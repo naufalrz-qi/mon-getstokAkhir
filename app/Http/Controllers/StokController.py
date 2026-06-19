@@ -58,6 +58,14 @@ class StokController:
         return render_template('histori.html')
 
     @staticmethod
+    def perhitungan_stok_page():
+        """HTML Page: Perhitungan Stok via Transaksi"""
+        server_key = session.get('selected_server')
+        if not server_key:
+            return render_template('index.html')
+        return render_template('perhitungan_stok.html')
+
+    @staticmethod
     def monitoring_transaksi_page():
         """HTML Page: Cek barang dengan/tanpa transaksi"""
         server_key = session.get('selected_server')
@@ -562,8 +570,22 @@ class StokController:
             search_kode = request.args.get('search_kode')
             search_nama = request.args.get('search_nama')
             divisi = request.args.get('divisi')
+            kategori = request.args.get('kategori')
+            merk = request.args.get('merk')
+            sort_by = request.args.get('sort_by')
+            sort_order = request.args.get('sort_order', 'asc')
 
-            result = SnapshotManager.search(server_key, search_kode, search_nama, divisi)
+            result = SnapshotManager.search(
+                server_key=server_key, 
+                search_kode=search_kode, 
+                search_nama=search_nama, 
+                divisi=divisi,
+                kategori=kategori,
+                merk=merk,
+                sort_by=sort_by,
+                sort_order=sort_order
+            )
+            
             if result['status'] != 'success':
                 return jsonify(result), 400
 
@@ -1086,6 +1108,166 @@ class StokController:
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
+    # ──────────── Compare & Sync Harga Gudang APIs ────────────
+
+    @staticmethod
+    def compare_harga_page():
+        """Render halaman komparasi harga Server Gudang vs Server Grosir"""
+        servers = db_manager.get_available_servers()
+        
+        gudang_servers = [s for s in servers if s.get('type') == 'gudang']
+        grosir_servers = [s for s in servers if s.get('type') == 'grosir']
+        
+        server_key = session.get('selected_server')
+        return render_template('compare_harga.html', 
+                               gudang_servers=gudang_servers, 
+                               grosir_servers=grosir_servers, 
+                               selected_server=server_key)
+
+    @staticmethod
+    def fetch_compare_harga():
+        """API: Ambil data mismatch harga Source vs Target Server"""
+        try:
+            source_server = request.args.get('source_server', 'GUDANG')
+            target_server = request.args.get('target_server')
+
+            if not target_server or source_server == target_server:
+                return jsonify({'status': 'error', 'message': 'Pilih server target yang berbeda dari source'}), 400
+
+            # Query dasar untuk ngambil harga
+            sql = """
+                SELECT 
+                    b.kd_barang, 
+                    b.barang, 
+                    s.kd_satuan, 
+                    sat.satuan as nama_satuan,
+                    s.harga_jual,
+                    mb.status as status_barang
+                FROM dbo.v_m_barang b
+                JOIN dbo.m_barang mb ON b.kd_barang = mb.kd_barang
+                JOIN dbo.m_barang_satuan s ON b.kd_barang = s.kd_barang
+                LEFT JOIN dbo.v_m_barang_satuan sat ON s.kd_satuan = sat.kd_satuan AND sat.kd_barang = b.kd_barang
+            """
+
+            # Fetch Source
+            source_rows = db_manager.execute_query(source_server, sql)
+            if not source_rows:
+                return jsonify({'status': 'success', 'data': []})
+                
+            # Build dict for Source: key = (kd_barang, kd_satuan)
+            source_dict = {
+                (row['kd_barang'], row['kd_satuan']): row 
+                for row in source_rows
+            }
+
+            # Fetch Target Server
+            target_rows = db_manager.execute_query(target_server, sql)
+            target_dict = {
+                (row['kd_barang'], row['kd_satuan']): row 
+                for row in target_rows
+            }
+
+            mismatches = []
+            for key, g_row in source_dict.items():
+                if key in target_dict:
+                    t_row = target_dict[key]
+                    h_source = float(g_row['harga_jual'] or 0)
+                    h_target = float(t_row['harga_jual'] or 0)
+                    
+                    if h_source != h_target:
+                        mismatches.append({
+                            'kd_barang': g_row['kd_barang'],
+                            'nama_barang': g_row['barang'],
+                            'kd_satuan': g_row['kd_satuan'],
+                            'nama_satuan': g_row['nama_satuan'],
+                            'harga_gudang': h_source,
+                            'harga_target': h_target,
+                            'selisih': abs(h_source - h_target),
+                            'status_barang': g_row['status_barang']
+                        })
+
+            return jsonify({'status': 'success', 'data': mismatches})
+            
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def sync_harga_gudang():
+        """API POST: Sync harga target server dari list items ke harga source"""
+        import os, json
+        from datetime import datetime
+        try:
+            data = request.get_json() or {}
+            target_server = data.get('target_server')
+            items = data.get('items', [])
+            
+            if not target_server:
+                return jsonify({'status': 'error', 'message': 'Target server tidak valid'}), 400
+            
+            if not items:
+                return jsonify({'status': 'error', 'message': 'Tidak ada item yang dipilih'}), 400
+
+            success_count = 0
+            for item in items:
+                kd_barang = item.get('kd_barang')
+                kd_satuan = item.get('kd_satuan')
+                harga_gudang = float(item.get('harga_gudang', 0))
+                
+                sql_update = """
+                    UPDATE dbo.m_barang_satuan
+                    SET harga_jual = ?
+                    WHERE kd_barang = ? AND kd_satuan = ?
+                """
+                db_manager.execute_update(target_server, sql_update, (harga_gudang, kd_barang, kd_satuan))
+                success_count += 1
+                
+            # Log history
+            if success_count > 0:
+                history_file = os.path.join('database', 'sync_history.json')
+                history_data = []
+                if os.path.exists(history_file):
+                    try:
+                        with open(history_file, 'r', encoding='utf-8') as f:
+                            history_data = json.load(f)
+                    except:
+                        pass
+                
+                # Determine source from items (usually same for all)
+                source_server = data.get('source_server', 'GUDANG')
+                
+                history_data.insert(0, {
+                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'user': session.get('username', 'Admin'),
+                    'source': source_server,
+                    'target': target_server,
+                    'count': success_count,
+                    'items': [f"{i.get('kd_barang')} ({i.get('nama_barang')})" for i in items][:10]
+                })
+                
+                history_data = history_data[:50] # Keep last 50
+                
+                with open(history_file, 'w', encoding='utf-8') as f:
+                    json.dump(history_data, f, indent=2)
+                
+            return jsonify({'status': 'success', 'message': f'Berhasil sync {success_count} item'})
+
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def fetch_sync_history():
+        """API GET: Fetch price sync history"""
+        import os, json
+        try:
+            history_file = os.path.join('database', 'sync_history.json')
+            history_data = []
+            if os.path.exists(history_file):
+                with open(history_file, 'r', encoding='utf-8') as f:
+                    history_data = json.load(f)
+            return jsonify({'status': 'success', 'data': history_data})
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
     # ──────────── DuckDB Sync APIs ────────────
 
     @staticmethod
@@ -1207,6 +1389,152 @@ class StokController:
         if not server_key: return jsonify({'error': 'No server'}), 400
         from app.Services.DashboardAnalyticsService import DashboardAnalyticsService
         return jsonify(DashboardAnalyticsService.get_basket_composition(server_key, int(tahun)))
+
+    # ──────────── Perhitungan Stok APIs ────────────
+
+    @staticmethod
+    def trigger_perhitungan_stok():
+        """API: Trigger perhitungan stok di background"""
+        try:
+            data = request.get_json() or {}
+            server_key = session.get('selected_server')
+            start_date = data.get('start_date')
+            end_date = data.get('end_date')
+            use_stok_awal = data.get('use_stok_awal', False)
+
+            if not server_key or not start_date or not end_date:
+                return jsonify({'status': 'error', 'message': 'Missing parameters'}), 400
+
+            from app.Services.Snapshot.SnapshotRunner import SnapshotRunner
+            result = SnapshotRunner.trigger_perhitungan_stok(server_key, start_date, end_date, use_stok_awal)
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def trigger_perhitungan_stok_tanggal():
+        """API: Trigger perhitungan stok berdasarkan 1 tanggal persis spt monitoring"""
+        try:
+            data = request.get_json() or {}
+            server_key = session.get('selected_server')
+            tanggal = data.get('tanggal')
+
+            if not server_key or not tanggal:
+                return jsonify({'status': 'error', 'message': 'Missing parameters'}), 400
+
+            from app.Services.Snapshot.SnapshotRunner import SnapshotRunner
+            result = SnapshotRunner.trigger_perhitungan_stok(server_key, start_date='1900-01-01', end_date=tanggal, use_stok_awal=True)
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @staticmethod
+    def status_perhitungan_stok():
+        """API: Cek status perhitungan stok"""
+        server_key = session.get('selected_server')
+        if not server_key:
+            return jsonify({'state': 'empty'})
+
+        from app.Services.Snapshot.SnapshotState import SnapshotState
+        status = SnapshotState._perhitungan_status.get(server_key)
+        if not status:
+            return jsonify({'state': 'empty'})
+        return jsonify(status)
+
+    @staticmethod
+    def fetch_perhitungan_stok():
+        """API: Fetch data perhitungan stok"""
+        server_key = session.get('selected_server')
+        if not server_key:
+            return jsonify({'status': 'error', 'message': 'Pilih server dulu'}), 400
+
+        search_kode = request.args.get('search_kode')
+        search_nama = request.args.get('search_nama')
+        divisi = request.args.get('divisi')
+        kategori = request.args.get('kategori')
+        merk = request.args.get('merk')
+        
+        limit = request.args.get('limit', type=int)
+        offset = request.args.get('offset', type=int)
+            
+        sort_by = request.args.get('sort_by', 'nominal')
+        sort_order = request.args.get('sort_order', 'desc')
+
+        from app.Services.Snapshot.SnapshotQuery import SnapshotQuery
+        result = SnapshotQuery.search_perhitungan(
+            server_key=server_key,
+            search_kode=search_kode,
+            search_nama=search_nama,
+            divisi=divisi,
+            kategori=kategori,
+            merk=merk,
+            limit=limit,
+            offset=offset,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
+
+        return jsonify(result)
+
+    @staticmethod
+    def export_perhitungan_stok_xlsx():
+        """API: Export perhitungan stok ke XLSX"""
+        server_key = session.get('selected_server')
+        if not server_key:
+            return "Pilih server dulu", 400
+
+        search_kode = request.args.get('search_kode')
+        search_nama = request.args.get('search_nama')
+        divisi = request.args.get('divisi')
+        kategori = request.args.get('kategori')
+        merk = request.args.get('merk')
+
+        from app.Services.Snapshot.SnapshotQuery import SnapshotQuery
+        result = SnapshotQuery.search_perhitungan(
+            server_key=server_key,
+            search_kode=search_kode,
+            search_nama=search_nama,
+            divisi=divisi,
+            kategori=kategori,
+            merk=merk,
+            limit=1000000,
+            offset=0
+        )
+
+        if result.get('status') != 'success':
+            return result.get('message', 'Failed to fetch data'), 400
+
+        data = result['data']
+        
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Perhitungan Stok"
+
+        headers = ['Kode Divisi', 'Divisi', 'Kode Barang', 'Barang', 'Kategori', 'Merk', 'Stok Akhir', 'Harga Avg', 'Harga Jual', 'Nominal', 'Harga Beli Akhir']
+        ws.append(headers)
+        
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal='center')
+
+        for row in data:
+            ws.append([
+                row.get('Kode Divisi'), row.get('Divisi'), row.get('Kode Barang'),
+                row.get('Barang'), row.get('Kategori'), row.get('Merk'),
+                row.get('Stok Akhir'), row.get('Harga Avg'), row.get('Harga Jual'),
+                row.get('Nominal'), row.get('Harga Beli Akhir')
+            ])
+
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=f"Perhitungan_Stok_{server_key}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
     @staticmethod
     def dashboard_analytics_stock_predict():

@@ -67,6 +67,7 @@
             {% if session.get('role') == 'super_admin' or 'master_update' in session.get('menus', []) %}
             <div class="sidebar-section-label">Data Master</div>
             <a href="/master/update-barang" class="sidebar-nav-item"><i class="fas fa-tags"></i><span>Update Barang</span></a>
+            <a href="/master/compare-harga" class="sidebar-nav-item"><i class="fas fa-balance-scale"></i><span>Komparasi Harga</span></a>
             {% endif %}
 
             <!-- Utilitas -->

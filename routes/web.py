@@ -57,6 +57,7 @@ def register_routes(app):
     Route.get('/mon/penjualan', menu('stok_data_transaksi')(StokController.monitoring_penjualan_page))
     Route.get('/stok/opname', menu('stok_opname')(StokController.opname_page))
     Route.get('/master/update-barang', menu('master_update')(StokController.update_barang_page))
+    Route.get('/master/compare-harga', menu('master_update')(StokController.compare_harga_page))
     Route.get('/stok/servers', superadmin(ServerController.servers_page))
     Route.get('/stok/mass-refresh', admin(StokController.mass_refresh_page))
     Route.get('/mon/sync-duckdb', admin(StokController.sync_duckdb_page))
@@ -73,10 +74,20 @@ def register_routes(app):
     Route.get('/api/dashboard/stock-predict', menu('dashboard_bisnis')(StokController.dashboard_analytics_stock_predict))
 
     Route.get('/stok/api/monitoring', menu('stok_index')(StokController.fetch_monitoring_data))
+    Route.get('/stok/perhitungan', menu('stok_index')(StokController.perhitungan_stok_page))
+    Route.post('/stok/api/perhitungan/trigger', menu('stok_index')(StokController.trigger_perhitungan_stok))
+    Route.post('/stok/api/perhitungan/trigger_tanggal', menu('stok_index')(StokController.trigger_perhitungan_stok_tanggal))
+    Route.get('/stok/api/perhitungan/status', menu('stok_index')(StokController.status_perhitungan_stok))
+    Route.get('/stok/api/perhitungan/data', menu('stok_index')(StokController.fetch_perhitungan_stok))
+    Route.get('/stok/export/perhitungan', menu('stok_index')(StokController.export_perhitungan_stok_xlsx))
     Route.get('/api/monitoring/penjualan', menu('stok_data_transaksi')(StokController.fetch_sales_monitoring))
     Route.get('/stok/api/histori', menu('stok_histori')(StokController.fetch_barang_histori))
     Route.get('/master/api/barang', login(StokController.fetch_barang_data))
     Route.post('/master/api/barang/update', menu('master_update')(StokController.update_barang))
+    
+    Route.get('/master/api/compare-harga', menu('master_update')(StokController.fetch_compare_harga))
+    Route.post('/master/api/sync-harga', menu('master_update')(StokController.sync_harga_gudang))
+    Route.get('/master/api/sync-history', menu('master_update')(StokController.fetch_sync_history))
     
     Route.post('/api/duckdb/sync', admin(StokController.trigger_duckdb_sync))
     Route.get('/api/duckdb/status', login(StokController.check_duckdb_status))

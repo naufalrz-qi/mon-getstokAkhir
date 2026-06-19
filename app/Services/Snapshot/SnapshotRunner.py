@@ -1219,3 +1219,393 @@ class SnapshotRunner:
                     except:
                         pass
 
+    @classmethod
+    def trigger_perhitungan_stok(cls, server_key, start_date, end_date, use_stok_awal=False):
+            if server_key in SnapshotState._perhitungan_threads and SnapshotState._perhitungan_threads[server_key].is_alive():
+                return {'status': 'already_running', 'message': 'Perhitungan stok sedang berjalan'}
+    
+            SnapshotState._perhitungan_status[server_key] = {
+                'state': 'starting',
+                'progress': 0,
+                'message': 'Menghitung stok...',
+                'started_at': time.time(),
+                'row_count': 0,
+            }
+    
+            t = threading.Thread(
+                target=cls._do_perhitungan_stok,
+                args=(server_key, start_date, end_date, use_stok_awal),
+                daemon=True,
+            )
+            SnapshotState._perhitungan_threads[server_key] = t
+            t.start()
+            
+            return {'status': 'started', 'message': 'Perhitungan stok dimulai'}
+
+    @classmethod
+    def _do_perhitungan_stok(cls, server_key, start_date, end_date, use_stok_awal=False):
+            from app.Models.Database import db_manager
+            # Barang lookup: kd_barang -> {nama, kategori, merk, ...}
+            barang_map = {}
+            for b in barang_list:
+                barang_map[b['kd_barang']] = {
+                    'nama': b['nama'],
+                    'kategori': b.get('kategori', ''),
+                    'merk': b.get('merk', ''),
+                    'model': b.get('model', ''),
+                    'warna': b.get('warna', ''),
+                    'ukuran': b.get('ukuran', ''),
+                    'harga_jual': float(b.get('harga_jual', 0) or 0),
+                }
+    
+            # Satuan konversi: (kd_barang, kd_satuan) -> jumlah
+            satuan_map = {}
+            for s in satuan_list:
+                key = (s['kd_barang'], s['kd_satuan'])
+                satuan_map[key] = float(s.get('jumlah', 1) or 1)
+    
+            # Divisi: kd_divisi -> nama
+            divisi_map = {}
+            for d in divisi_list:
+                divisi_map[d['kd_divisi']] = d['nama']
+    
+            # Harga beli terakhir: kd_barang -> harga
+            harga_beli_map = {}
+            for h in fetch_results.get('harga_beli', []):
+                harga_beli_map[h['kd_barang']] = float(h.get('harga_beli', 0) or 0)
+    
+            # Harga average: kd_barang -> weighted avg
+            harga_avg_map = {}
+            for h in fetch_results.get('harga_avg', []):
+                harga_avg_map[h['kd_barang']] = float(h.get('harga_avg', 0) or 0)
+    
+            # ── Accumulate debet/kredit ──
+            # Key: (kd_divisi, kd_barang) -> {'debet': float, 'kredit': float}
+            accum = defaultdict(lambda: {'debet': 0.0, 'kredit': 0.0})
+    
+            transaction_tables = ['stok_awal', 'penjualan', 'pembelian', 'opname', 'mutasi', 'retur']
+    
+            for table_name in transaction_tables:
+                rows = fetch_results.get(table_name, [])
+                for row in rows:
+                    kd_barang = row.get('kd_barang', '')
+                    kd_divisi = row.get('kd_divisi', '')
+                    kd_satuan = row.get('kd_satuan', '')
+    
+                    # Skip barang that aren't in master (inactive/deleted)
+                    if kd_barang not in barang_map:
+                        continue
+    
+                    # Get satuan conversion factor
+                    conv = satuan_map.get((kd_barang, kd_satuan), 1.0)
+    
+                    debet = float(row.get('debet', 0) or 0) * conv
+                    kredit = float(row.get('kredit', 0) or 0) * conv
+    
+                    key = (kd_divisi, kd_barang)
+                    accum[key]['debet'] += debet
+                    accum[key]['kredit'] += kredit
+    
+            # ── Build final rows ──
+            final_rows = []
+            for (kd_divisi, kd_barang), vals in accum.items():
+                stok = vals['debet'] - vals['kredit']
+                master = barang_map.get(kd_barang, {})
+                if not master:
+                    continue
+    
+                final_rows.append({
+                    'kd_divisi': kd_divisi,
+                    'divisi': divisi_map.get(kd_divisi, kd_divisi),
+                    'kd_barang': kd_barang,
+                    'barang': master.get('nama', ''),
+                    'kategori': master.get('kategori', ''),
+                    'merk': master.get('merk', ''),
+                    'model': master.get('model', ''),
+                    'warna': master.get('warna', ''),
+                    'ukuran': master.get('ukuran', ''),
+                    'stok_akhir': round(stok, 4),
+                    'harga_jual': master.get('harga_jual', 0),
+                    'harga_beli_akhir': harga_beli_map.get(kd_barang, 0),
+                    'harga_avg': round(harga_avg_map.get(kd_barang, 0), 2),
+                })
+    
+            # Sort by divisi, barang name
+            final_rows.sort(key=lambda r: (r['divisi'], r['barang']))
+    
+            # ── Process opname detail ──
+            opname_rows = []
+            for row in fetch_results.get('opname_detail', []):
+                kd_barang = row.get('kd_barang', '')
+                kd_divisi = row.get('kd_divisi', '')
+                master = barang_map.get(kd_barang, {})
+                
+                # Map status
+                status_val = row.get('status')
+                status_text = 'Lain-Lain'
+                if status_val == 0:
+                    status_text = 'Hilang'
+                elif status_val == 1:
+                    status_text = 'Rusak'
+                elif status_val == 2 or str(status_val) == '2':
+                    status_text = 'Lain-Lain(+)'
+                elif status_val == 3:
+                    status_text = 'Lain-Lain (-)'
+    
+                opname_rows.append({
+                    'no_transaksi': row.get('no_transaksi', ''),
+                    'kd_divisi': kd_divisi,
+                    'divisi': divisi_map.get(kd_divisi, kd_divisi),
+                    'kd_barang': kd_barang,
+                    'barang': master.get('nama', '') or kd_barang,
+                    'kd_satuan': row.get('kd_satuan', ''),
+                    'satuan': row.get('satuan', ''),
+                    'tanggal': row.get('tanggal', ''),
+                    'qty': row.get('qty', 0),
+                    'keterangan': row.get('keterangan', ''),
+                    'petugas': row.get('petugas', ''),
+                    'status_text': status_text,
+                    'tanggal_server': row.get('tanggal_server', '')
+                })
+    
+            # Process satuan_rows (from m_barang_satuan in master_sets[1])
+            satuan_rows = []
+            for s in satuan_list:
+                satuan_rows.append({
+                    'kd_barang': s['kd_barang'],
+                    'kd_satuan': s['kd_satuan'],
+                    'jumlah': float(s.get('jumlah', 1) or 1),
+                    'nama_satuan': s.get('nama_satuan') or s.get('kd_satuan')
+                })
+    
+            return final_rows, opname_rows, satuan_rows
+
+    @classmethod
+    def _load_to_memory(cls, server_key):
+            db_path = SnapshotCore._db_path(server_key)
+            if not os.path.exists(db_path):
+                return
+            conn = None
+            try:
+                conn = sqlite3.connect(db_path)
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute('SELECT * FROM stok_snapshot').fetchall()
+                with SnapshotState._cache_lock:
+                    SnapshotState._mem_cache[server_key] = [dict(r) for r in rows]
+                    SnapshotState._mem_cache_ts[server_key] = time.time()
+            except sqlite3.DatabaseError as e:
+                if 'malformed' in str(e).lower() or 'corrupt' in str(e).lower():
+                    print(f"[MEMORY CACHE] Corrupted DB detected for {server_key}. Removing...")
+                    if conn:
+                        try:
+                            conn.close()
+                        except:
+                            pass
+                    for ext in ['', '-wal', '-shm']:
+                        try:
+                            if os.path.exists(db_path + ext):
+                                os.remove(db_path + ext)
+                        except OSError:
+                            pass
+            finally:
+                if conn:
+                    try:
+                        conn.close()
+                    except:
+                        pass
+
+    @classmethod
+    def trigger_perhitungan_stok(cls, server_key, start_date, end_date, use_stok_awal=False):
+            if server_key in SnapshotState._perhitungan_threads and SnapshotState._perhitungan_threads[server_key].is_alive():
+                return {'status': 'already_running', 'message': 'Perhitungan stok sedang berjalan'}
+    
+            SnapshotState._perhitungan_status[server_key] = {
+                'state': 'starting',
+                'progress': 0,
+                'message': 'Menghitung stok...',
+                'started_at': time.time(),
+                'row_count': 0,
+            }
+    
+            t = threading.Thread(
+                target=cls._do_perhitungan_stok,
+                args=(server_key, start_date, end_date, use_stok_awal),
+                daemon=True,
+            )
+            SnapshotState._perhitungan_threads[server_key] = t
+            t.start()
+            
+            return {'status': 'started', 'message': 'Perhitungan stok dimulai'}
+
+    @classmethod
+    def _do_perhitungan_stok(cls, server_key, start_date, end_date, use_stok_awal=False):
+            from app.Models.Database import db_manager
+            
+            status = SnapshotState._perhitungan_status[server_key]
+            
+            try:
+                status['state'] = 'fetching'
+                status['progress'] = 10
+                status['message'] = 'Mengambil mutasi transaksi dari database (MSSQL)...'
+                _t0 = time.time()
+                
+                # If using stok awal, the absolute truth starts strictly after Tutup Buku.
+                if use_stok_awal:
+                    conn = None
+                    try:
+                        conn = db_manager.create_new_connection(server_key)
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT CONVERT(VARCHAR(10), DATEADD(DAY, 1, dbo.GetTanggalTerakhirTutupBuku()), 120)")
+                        row = cursor.fetchone()
+                        if row and row[0]:
+                            start_date = row[0]
+                        cursor.close()
+                    except Exception:
+                        pass
+                    finally:
+                        if conn:
+                            try: conn.close()
+                            except: pass
+
+                query = """
+                SET NOCOUNT ON;
+                SELECT kd_divisi, kd_barang, SUM(debet) - SUM(kredit) AS net_stok
+                FROM (
+                    -- Pembelian
+                    SELECT t.kd_divisi, d.kd_barang, d.qty * COALESCE(s.jumlah, 1) AS debet, 0 AS kredit
+                    FROM t_pembelian_detail d (NOLOCK)
+                    INNER JOIN t_pembelian t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+                    LEFT JOIN m_barang_satuan s (NOLOCK) ON d.kd_barang = s.kd_barang AND d.kd_satuan = s.kd_satuan
+                    WHERE CAST(t.tanggal AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
+                      AND t.status IN (0, 1)
+
+                    UNION ALL
+                    -- Penjualan
+                    SELECT t.kd_divisi, d.kd_barang, 0 AS debet, d.qty * COALESCE(s.jumlah, 1) AS kredit
+                    FROM t_penjualan_detail d (NOLOCK)
+                    INNER JOIN t_penjualan t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+                    INNER JOIN m_barang b (NOLOCK) ON d.kd_barang = b.kd_barang
+                    INNER JOIN m_kategori k (NOLOCK) ON b.kd_kategori = k.kd_kategori
+                    LEFT JOIN m_barang_satuan s (NOLOCK) ON d.kd_barang = s.kd_barang AND d.kd_satuan = s.kd_satuan
+                    WHERE CAST(t.tanggal AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
+                      AND k.status <> 2
+
+                    UNION ALL
+                    -- Mutasi Keluar
+                    SELECT t.kd_divisi_asal AS kd_divisi, d.kd_barang, 0 AS debet, d.qty * COALESCE(s.jumlah, 1) AS kredit
+                    FROM t_mutasi_stok_detail d (NOLOCK)
+                    INNER JOIN t_mutasi_stok t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+                    LEFT JOIN m_barang_satuan s (NOLOCK) ON d.kd_barang = s.kd_barang AND d.kd_satuan = s.kd_satuan
+                    WHERE CAST(t.tanggal AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
+                    
+                    UNION ALL
+                    -- Mutasi Masuk
+                    SELECT t.kd_divisi_tujuan AS kd_divisi, d.kd_barang, d.qty * COALESCE(s.jumlah, 1) AS debet, 0 AS kredit
+                    FROM t_mutasi_stok_detail d (NOLOCK)
+                    INNER JOIN t_mutasi_stok t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+                    LEFT JOIN m_barang_satuan s (NOLOCK) ON d.kd_barang = s.kd_barang AND d.kd_satuan = s.kd_satuan
+                    WHERE CAST(t.tanggal AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
+
+                    UNION ALL
+                    -- Retur Penjualan
+                    SELECT t.kd_divisi, d.kd_barang, d.qty * COALESCE(s.jumlah, 1) AS debet, 0 AS kredit
+                    FROM t_penjualan_retur_detail d (NOLOCK)
+                    INNER JOIN t_penjualan_retur t (NOLOCK) ON d.no_retur = t.no_retur
+                    LEFT JOIN m_barang_satuan s (NOLOCK) ON d.kd_barang = s.kd_barang AND d.kd_satuan = s.kd_satuan
+                    WHERE CAST(t.tanggal AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
+
+                    UNION ALL
+                    -- Retur Pembelian
+                    SELECT t.kd_divisi, d.kd_barang, 0 AS debet, d.qty * COALESCE(s.jumlah, 1) AS kredit
+                    FROM t_pembelian_retur_detail d (NOLOCK)
+                    INNER JOIN t_pembelian_retur t (NOLOCK) ON d.no_retur = t.no_retur
+                    LEFT JOIN m_barang_satuan s (NOLOCK) ON d.kd_barang = s.kd_barang AND d.kd_satuan = s.kd_satuan
+                    WHERE CAST(t.tanggal AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
+
+                    UNION ALL
+                    -- Opname Masuk
+                    SELECT d.kd_divisi, d.kd_barang, d.qty * COALESCE(s.jumlah, 1) AS debet, 0 AS kredit
+                    FROM t_opname_stok d (NOLOCK)
+                    LEFT JOIN m_barang_satuan s (NOLOCK) ON d.kd_barang = s.kd_barang AND d.kd_satuan = s.kd_satuan
+                    WHERE d.status = 2
+                      AND CAST(d.tanggal AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
+                      
+                    UNION ALL
+                    -- Opname Keluar
+                    SELECT d.kd_divisi, d.kd_barang, 0 AS debet, d.qty * COALESCE(s.jumlah, 1) AS kredit
+                    FROM t_opname_stok d (NOLOCK)
+                    LEFT JOIN m_barang_satuan s (NOLOCK) ON d.kd_barang = s.kd_barang AND d.kd_satuan = s.kd_satuan
+                    WHERE d.status <> 2
+                      AND CAST(d.tanggal AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
+                ) AS all_trans
+                GROUP BY kd_divisi, kd_barang
+                """
+                
+                params = [start_date, end_date] * 8
+
+                if use_stok_awal:
+                    stok_awal_query = """
+                    UNION ALL
+                    -- Stok Awal Aktual
+                    SELECT bd.kd_divisi, bd.kd_barang, bd.stok_awal AS debet, 0 AS kredit
+                    FROM m_barang_divisi bd (NOLOCK)
+                    INNER JOIN m_barang b (NOLOCK) ON bd.kd_barang = b.kd_barang
+                    INNER JOIN m_kategori k (NOLOCK) ON b.kd_kategori = k.kd_kategori
+                    WHERE k.status <> 2
+                    """
+                    query = query.replace(") AS all_trans", stok_awal_query + "\n                ) AS all_trans")
+                
+                net_stok_map = {}
+                conn = None
+                try:
+                    conn = db_manager.create_new_connection(server_key)
+                    cursor = conn.cursor()
+                    cursor.execute(query, params)
+                    for row in cursor.fetchall():
+                        kd_divisi, kd_barang, net_stok = row[0], row[1], float(row[2] or 0)
+                        net_stok_map[(kd_divisi, kd_barang)] = round(net_stok, 4)
+                    cursor.close()
+                finally:
+                    if conn:
+                        try:
+                            conn.close()
+                        except:
+                            pass
+                
+                status['progress'] = 60
+                status['message'] = 'Menyusun hasil dengan data master...'
+                
+                # Fetch base data from memory cache
+                with SnapshotState._cache_lock:
+                    if server_key not in SnapshotState._mem_cache:
+                        cls._load_to_memory(server_key)
+                    master_cache = SnapshotState._mem_cache.get(server_key, [])
+                
+                result_data = []
+                for row in master_cache:
+                    new_row = row.copy()
+                    kd_divisi = new_row.get('kd_divisi')
+                    kd_barang = new_row.get('kd_barang')
+                    net_stok = net_stok_map.get((kd_divisi, kd_barang), 0)
+                    new_row['stok_akhir'] = net_stok
+                    # recalculate nominal
+                    harga_avg = float(new_row.get('harga_avg', 0) or 0)
+                    new_row['nominal'] = net_stok * harga_avg
+                    result_data.append(new_row)
+                
+                # Save to cache
+                SnapshotState._perhitungan_cache[server_key] = result_data
+                
+                _t1 = time.time()
+                elapsed = round(_t1 - _t0, 1)
+                status['progress'] = 100
+                status['state'] = 'ready'
+                status['row_count'] = len(result_data)
+                status['message'] = f'Perhitungan stok selesai ({elapsed}s)'
+                
+            except Exception as e:
+                status['state'] = 'error'
+                status['progress'] = 0
+                status['message'] = f'Error perhitungan stok: {str(e)}'
+                print(f'[PERHITUNGAN ERROR] {server_key}: {e}')
+                traceback.print_exc()
