@@ -45,3 +45,13 @@ force_full_refresh.py
 test_*.py
 *.duckdb
 *.db
+
+# Ignored folders
+database/snapshots/
+
+# Test files
+test.*
+out.*
+check.*
+database/sync_history.json
+analisis_akurasi_perhitungan_stok.md
