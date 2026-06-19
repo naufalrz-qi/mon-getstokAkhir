@@ -79,7 +79,7 @@ class SnapshotRunner:
                 # Master Barang
                 cursor.execute("""
                     SELECT b.kd_barang, b.nama, b.merk, b.model, b.warna, b.ukuran, b.harga_jual, k.nama as kategori
-                    FROM m_barang b (NOLOCK)
+                    FROM v_m_barang b (NOLOCK)
                     LEFT JOIN m_kategori k (NOLOCK) ON b.kd_kategori = k.kd_kategori
                     WHERE k.status <> 2 OR k.status IS NULL
                 """)
