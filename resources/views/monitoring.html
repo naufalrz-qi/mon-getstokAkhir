@@ -687,25 +687,25 @@
         
         tbody.innerHTML = '';
         pageData.forEach(row => {
-            const stok = row['Stok Akhir'] || 0;
+            const stok = row['stok_akhir'] || 0;
             const cls = stok < 1 ? 'stock-danger' : stok < 10 ? 'stock-warning' : 'stock-ok';
 
             const tr = document.createElement('tr');
             const cells = [
-                `<td data-col="0">${row['Kode Divisi']}</td>`,
-                `<td data-col="1">${row['Divisi']}</td>`,
-                `<td data-col="2"><span class="badge-glass">${row['Kode Barang']}</span></td>`,
-                `<td data-col="3" style="font-weight:600">${row['Barang']}</td>`,
-                `<td data-col="4" style="color:var(--text-secondary);font-size:0.8rem">${row['Kategori']}</td>`,
-                `<td data-col="5" style="color:var(--text-secondary);font-size:0.8rem">${row['Merk']}</td>`,
-                `<td data-col="6" style="color:var(--text-secondary);font-size:0.8rem">${row['Model'] || ''}</td>`,
-                `<td data-col="7" style="color:var(--text-secondary);font-size:0.8rem">${row['Warna'] || ''}</td>`,
-                `<td data-col="8" style="color:var(--text-secondary);font-size:0.8rem">${row['Ukuran'] || ''}</td>`,
+                `<td data-col="0">${row['kd_divisi'] || ''}</td>`,
+                `<td data-col="1">${row['divisi'] || ''}</td>`,
+                `<td data-col="2"><span class="badge-glass">${row['kd_barang'] || ''}</span></td>`,
+                `<td data-col="3" style="font-weight:600">${row['barang'] || ''}</td>`,
+                `<td data-col="4" style="color:var(--text-secondary);font-size:0.8rem">${row['kategori'] || ''}</td>`,
+                `<td data-col="5" style="color:var(--text-secondary);font-size:0.8rem">${row['merk'] || ''}</td>`,
+                `<td data-col="6" style="color:var(--text-secondary);font-size:0.8rem">${row['model'] || ''}</td>`,
+                `<td data-col="7" style="color:var(--text-secondary);font-size:0.8rem">${row['warna'] || ''}</td>`,
+                `<td data-col="8" style="color:var(--text-secondary);font-size:0.8rem">${row['ukuran'] || ''}</td>`,
                 `<td data-col="9" class="text-end ${cls}">${stok}</td>`,
-                `<td data-col="10" class="text-end">${fmt(row['Harga Average'])}</td>`,
-                `<td data-col="11" class="text-end">${fmt(row['Harga Jual'])}</td>`,
-                `<td data-col="12" class="text-end" style="font-weight:600;color:var(--warning)">${fmt(row['Nominal'])}</td>`,
-                `<td data-col="13" class="text-end">${fmt(row['Harga Beli Akhir'])}</td>`,
+                `<td data-col="10" class="text-end">${fmt(row['harga_avg'])}</td>`,
+                `<td data-col="11" class="text-end">${fmt(row['harga_jual'])}</td>`,
+                `<td data-col="12" class="text-end" style="font-weight:600;color:var(--warning)">${fmt(row['nominal'])}</td>`,
+                `<td data-col="13" class="text-end">${fmt(row['harga_beli_akhir'])}</td>`,
             ];
             tr.innerHTML = cells.join('');
 

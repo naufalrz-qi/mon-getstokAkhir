@@ -1273,10 +1273,10 @@ class StokController:
 
         for row in data:
             ws.append([
-                row.get('Kode Divisi'), row.get('Divisi'), row.get('Kode Barang'),
-                row.get('Barang'), row.get('Kategori'), row.get('Merk'),
-                row.get('Stok Akhir'), row.get('Harga Avg'), row.get('Harga Jual'),
-                row.get('Nominal'), row.get('Harga Beli Akhir')
+                row.get('kd_divisi'), row.get('divisi'), row.get('kd_barang'),
+                row.get('barang'), row.get('kategori'), row.get('merk'),
+                row.get('stok_akhir'), row.get('harga_avg'), row.get('harga_jual'),
+                row.get('nominal'), row.get('harga_beli_akhir')
             ])
 
         output = BytesIO()
