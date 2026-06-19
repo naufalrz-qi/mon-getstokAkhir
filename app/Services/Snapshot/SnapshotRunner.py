@@ -159,7 +159,6 @@ class SnapshotRunner:
                 INNER JOIN t_mutasi_stok t (NOLOCK) ON d.no_transaksi = t.no_transaksi
                 LEFT JOIN m_barang_satuan s (NOLOCK) ON d.kd_barang = s.kd_barang AND d.kd_satuan = s.kd_satuan
                 WHERE CAST(t.tanggal AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
-                  AND t.status IN (0, 1)
 
                 UNION ALL
                 -- Mutasi In
@@ -168,34 +167,22 @@ class SnapshotRunner:
                 INNER JOIN t_mutasi_stok t (NOLOCK) ON d.no_transaksi = t.no_transaksi
                 LEFT JOIN m_barang_satuan s (NOLOCK) ON d.kd_barang = s.kd_barang AND d.kd_satuan = s.kd_satuan
                 WHERE CAST(t.tanggal AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
-                  AND t.status IN (0, 1)
 
                 UNION ALL
                 -- Retur Jual
                 SELECT t.kd_divisi, d.kd_barang, d.qty * COALESCE(s.jumlah, 1) AS debet, 0 AS kredit
-                FROM t_retur_jual_detail d (NOLOCK)
-                INNER JOIN t_retur_jual t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+                FROM t_penjualan_retur_detail d (NOLOCK)
+                INNER JOIN t_penjualan_retur t (NOLOCK) ON d.no_retur = t.no_retur
                 LEFT JOIN m_barang_satuan s (NOLOCK) ON d.kd_barang = s.kd_barang AND d.kd_satuan = s.kd_satuan
                 WHERE CAST(t.tanggal AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
-                  AND t.status IN (0, 1)
 
                 UNION ALL
                 -- Retur Beli
                 SELECT t.kd_divisi, d.kd_barang, 0 AS debet, d.qty * COALESCE(s.jumlah, 1) AS kredit
-                FROM t_retur_beli_detail d (NOLOCK)
-                INNER JOIN t_retur_beli t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+                FROM t_pembelian_retur_detail d (NOLOCK)
+                INNER JOIN t_pembelian_retur t (NOLOCK) ON d.no_retur = t.no_retur
                 LEFT JOIN m_barang_satuan s (NOLOCK) ON d.kd_barang = s.kd_barang AND d.kd_satuan = s.kd_satuan
                 WHERE CAST(t.tanggal AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
-                  AND t.status IN (0, 1)
-
-                UNION ALL
-                -- Stok Opname
-                SELECT t.kd_divisi, d.kd_barang, d.qty_plus * COALESCE(s.jumlah, 1) AS debet, d.qty_minus * COALESCE(s.jumlah, 1) AS kredit
-                FROM t_stok_opname_detail d (NOLOCK)
-                INNER JOIN t_stok_opname t (NOLOCK) ON d.no_transaksi = t.no_transaksi
-                LEFT JOIN m_barang_satuan s (NOLOCK) ON d.kd_barang = s.kd_barang AND d.kd_satuan = s.kd_satuan
-                WHERE CAST(t.tanggal AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
-                  AND t.status IN (0, 1)
 
                 UNION ALL
                 -- Pemakaian Barang
@@ -204,21 +191,21 @@ class SnapshotRunner:
                 INNER JOIN t_pemakaian_barang t (NOLOCK) ON d.no_transaksi = t.no_transaksi
                 LEFT JOIN m_barang_satuan s (NOLOCK) ON d.kd_barang = s.kd_barang AND d.kd_satuan = s.kd_satuan
                 WHERE CAST(t.tanggal AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
-                  AND t.status IN (0, 1)
 
                 UNION ALL
-                -- Produksi
-                SELECT t.kd_divisi, d.kd_barang, d.qty_plus * COALESCE(s.jumlah, 1) AS debet, d.qty_minus * COALESCE(s.jumlah, 1) AS kredit
-                FROM t_produksi_detail d (NOLOCK)
-                INNER JOIN t_produksi t (NOLOCK) ON d.no_transaksi = t.no_transaksi
+                -- Transaksi Barang (Penyesuaian)
+                SELECT t.kd_divisi, d.kd_barang, 
+                       CASE WHEN t.jenis = 'Masuk' THEN d.qty * COALESCE(s.jumlah, 1) ELSE 0 END AS debet,
+                       CASE WHEN t.jenis = 'Keluar' THEN d.qty * COALESCE(s.jumlah, 1) ELSE 0 END AS kredit
+                FROM t_transaksi_barang_detail d (NOLOCK)
+                INNER JOIN t_transaksi_barang t (NOLOCK) ON d.no_transaksi = t.no_transaksi
                 LEFT JOIN m_barang_satuan s (NOLOCK) ON d.kd_barang = s.kd_barang AND d.kd_satuan = s.kd_satuan
                 WHERE CAST(t.tanggal AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
-                  AND t.status IN (0, 1)
             ) AS all_trans
             GROUP BY kd_divisi, kd_barang
             """
             
-            params = [start_date, end_date] * 9
+            params = [start_date, end_date] * 8
 
             if use_stok_awal:
                 stok_awal_query = """
