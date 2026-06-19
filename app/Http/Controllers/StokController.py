@@ -58,14 +58,6 @@ class StokController:
         return render_template('histori.html')
 
     @staticmethod
-    def perhitungan_stok_page():
-        """HTML Page: Perhitungan Stok via Transaksi"""
-        server_key = session.get('selected_server')
-        if not server_key:
-            return render_template('index.html')
-        return render_template('perhitungan_stok.html')
-
-    @staticmethod
     def monitoring_transaksi_page():
         """HTML Page: Cek barang dengan/tanpa transaksi"""
         server_key = session.get('selected_server')
@@ -100,13 +92,6 @@ class StokController:
         server = next((s for s in servers if s['key'] == server_key), None)
         server_type = server.get('type', 'grosir') if server else 'grosir'
         return render_template('update_barang.html', server_type=server_type)
-
-    @staticmethod
-    def mass_refresh_page():
-        """HTML Page: Mass refresh semua server"""
-        return render_template('mass_refresh.html')
-
-    # ──────────── Server Session APIs ────────────
 
     @staticmethod
     def get_server_list():
@@ -217,163 +202,6 @@ class StokController:
         return jsonify({'status': 'success', 'server': server})
 
     # ──────────── Snapshot APIs ────────────
-
-    @staticmethod
-    def trigger_refresh():
-        """API: Trigger snapshot refresh for current server"""
-        try:
-            server_key = session.get('selected_server')
-            if not server_key:
-                return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
-
-            tanggal = request.args.get('tanggal', datetime.now().strftime('%Y-%m-%d'))
-            result = SnapshotManager.trigger_refresh(server_key, tanggal)
-            return jsonify(result)
-
-        except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
-
-    @staticmethod
-    def trigger_delta_refresh():
-        """API: Quick update — only fetch new transactions since last refresh"""
-        try:
-            server_key = session.get('selected_server')
-            if not server_key:
-                return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
-
-            tanggal = request.args.get('tanggal', datetime.now().strftime('%Y-%m-%d'))
-            result = SnapshotManager.trigger_delta_refresh(server_key, tanggal)
-            return jsonify(result)
-
-        except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
-
-    @staticmethod
-    def trigger_weekly_refresh():
-        """API: Weekly update — fetch transactions from the last 7 days"""
-        try:
-            server_key = session.get('selected_server')
-            if not server_key:
-                return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
-
-            tanggal = request.args.get('tanggal', datetime.now().strftime('%Y-%m-%d'))
-            result = SnapshotManager.trigger_weekly_refresh(server_key, tanggal)
-            return jsonify(result)
-
-        except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
-
-    @staticmethod
-    def trigger_yearly_refresh():
-        """API: Yearly update"""
-        try:
-            server_key = session.get('selected_server')
-            if not server_key:
-                return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
-
-            tanggal = request.args.get('tanggal', datetime.now().strftime('%Y-%m-%d'))
-            result = SnapshotManager.trigger_yearly_refresh(server_key, tanggal)
-            return jsonify(result)
-
-        except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
-
-    @staticmethod
-    def snapshot_status():
-        """API: Get snapshot status for current server"""
-        server_key = session.get('selected_server')
-        if not server_key:
-            return jsonify({'state': 'empty', 'has_snapshot': False})
-
-        status = SnapshotManager.get_status(server_key)
-        return jsonify(status)
-
-    @staticmethod
-    def cancel_refresh():
-        """API: Cancel running snapshot refresh"""
-        server_key = session.get('selected_server')
-        if not server_key:
-            return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
-
-        result = SnapshotManager.cancel_refresh(server_key)
-        return jsonify(result)
-
-    @staticmethod
-    def trigger_refresh_target(server_key):
-        """API: Trigger snapshot refresh for a specific server (Admin Mass Refresh)"""
-        try:
-            if not server_key:
-                return jsonify({'status': 'error', 'message': 'Server key diperlukan'}), 400
-
-            tanggal = request.args.get('tanggal', datetime.now().strftime('%Y-%m-%d'))
-            result = SnapshotManager.trigger_refresh(server_key, tanggal)
-            return jsonify(result)
-
-        except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
-
-    @staticmethod
-    def trigger_delta_refresh_target(server_key):
-        """API: Quick update (delta) for a specific server"""
-        try:
-            if not server_key:
-                return jsonify({'status': 'error', 'message': 'Server key diperlukan'}), 400
-
-            tanggal = request.args.get('tanggal', datetime.now().strftime('%Y-%m-%d'))
-            result = SnapshotManager.trigger_delta_refresh(server_key, tanggal)
-            return jsonify(result)
-
-        except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
-
-    @staticmethod
-    def trigger_weekly_refresh_target(server_key):
-        """API: Weekly update for a specific server"""
-        try:
-            if not server_key:
-                return jsonify({'status': 'error', 'message': 'Server key diperlukan'}), 400
-
-            tanggal = request.args.get('tanggal', datetime.now().strftime('%Y-%m-%d'))
-            result = SnapshotManager.trigger_weekly_refresh(server_key, tanggal)
-            return jsonify(result)
-
-        except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
-
-    @staticmethod
-    def trigger_yearly_refresh_target(server_key):
-        """API: Yearly update for a specific server"""
-        try:
-            if not server_key:
-                return jsonify({'status': 'error', 'message': 'Server key diperlukan'}), 400
-
-            tanggal = request.args.get('tanggal', datetime.now().strftime('%Y-%m-%d'))
-            result = SnapshotManager.trigger_yearly_refresh(server_key, tanggal)
-            return jsonify(result)
-
-        except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
-
-    @staticmethod
-    def snapshot_status_target(server_key):
-        """API: Get snapshot status for a specific server"""
-        if not server_key:
-            return jsonify({'state': 'empty', 'has_snapshot': False})
-
-        status = SnapshotManager.get_status(server_key)
-        return jsonify(status)
-
-    @staticmethod
-    def global_snapshot_status():
-        """API: Get snapshot status for ALL servers (for global broadcasting)"""
-        servers = db_manager.get_available_servers()
-        statuses = {}
-        for s in servers:
-            sk = s['key']
-            statuses[sk] = SnapshotManager.get_status(sk)
-        return jsonify({'status': 'success', 'data': statuses})
-
-    # ──────────── Data APIs ────────────
 
     @staticmethod
     def fetch_divisi_list():
@@ -1269,80 +1097,6 @@ class StokController:
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
     # ──────────── DuckDB Sync APIs ────────────
-
-    @staticmethod
-    def sync_duckdb_page():
-        """Render halaman khusus untuk sinkronisasi DuckDB"""
-        server_key = session.get('selected_server')
-        if not server_key:
-            flash('Pilih server terlebih dahulu', 'error')
-            return redirect(url_for('web.dashboard_page'))
-            
-        servers = db_manager.get_available_servers()
-        if session.get('role') != 'super_admin':
-            allowed_servers = session.get('servers', [])
-            servers = [s for s in servers if s['key'] in allowed_servers]
-            
-        return render_template('sync_duckdb.html', 
-                             servers=servers,
-                             selected_server=server_key,
-                             role=session.get('role'))
-
-    @staticmethod
-    def trigger_duckdb_sync():
-        """API: Trigger background sync untuk DuckDB"""
-        try:
-            data = request.get_json() or {}
-            server_key = data.get('server_key') or session.get('selected_server')
-            if not server_key:
-                return jsonify({'status': 'error', 'message': 'Pilih server terlebih dahulu'}), 400
-
-            days_back = data.get('days_back', 30)
-            
-            from app.Services.Snapshot.SalesDuckDBRunner import SalesDuckDBRunner
-            result = SalesDuckDBRunner.sync_sales_data(server_key, days_back=days_back)
-            return jsonify(result)
-        except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
-
-    @staticmethod
-    def check_duckdb_status():
-        """API: Cek status sync DuckDB"""
-        server_key = session.get('selected_server')
-        if not server_key:
-            return jsonify({'state': 'empty'})
-
-        from app.Services.Snapshot.SalesDuckDBRunner import SalesDuckDBRunner
-        status = SalesDuckDBRunner.get_status(server_key)
-        return jsonify(status)
-
-    @staticmethod
-    def mass_sync_duckdb_page():
-        return render_template('mass_sync_duckdb.html')
-
-    @staticmethod
-    def trigger_mass_duckdb_sync():
-        try:
-            data = request.get_json() or {}
-            days_back = int(data.get('days_back', 30))
-            servers = db_manager.get_available_servers()
-            from app.Services.Snapshot.SalesDuckDBRunner import SalesDuckDBRunner
-            for srv in servers:
-                if srv.get('type') == 'retail':
-                    continue
-                SalesDuckDBRunner.sync_sales_data(srv['key'], days_back=days_back)
-            return jsonify({'status': 'success', 'message': 'Mass sync dimulai untuk semua server'})
-        except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
-
-    @staticmethod
-    def check_mass_duckdb_status():
-        try:
-            from app.Services.Snapshot.SalesDuckDBRunner import SalesDuckDBRunner
-            status = SalesDuckDBRunner.get_all_status()
-            return jsonify({'status': 'success', 'data': status})
-        except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
 
     @staticmethod
     def dashboard_analytics_trend():

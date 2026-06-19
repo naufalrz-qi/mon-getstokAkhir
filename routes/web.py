@@ -59,9 +59,6 @@ def register_routes(app):
     Route.get('/master/update-barang', menu('master_update')(StokController.update_barang_page))
     Route.get('/master/compare-harga', menu('master_update')(StokController.compare_harga_page))
     Route.get('/stok/servers', superadmin(ServerController.servers_page))
-    Route.get('/stok/mass-refresh', admin(StokController.mass_refresh_page))
-    Route.get('/mon/sync-duckdb', admin(StokController.sync_duckdb_page))
-    Route.get('/mon/mass-sync-duckdb', admin(StokController.mass_sync_duckdb_page))
 
     # API endpoints
     Route.get('/api/dashboard/summary', login(StokController.fetch_dashboard_summary))
@@ -74,7 +71,7 @@ def register_routes(app):
     Route.get('/api/dashboard/stock-predict', menu('dashboard_bisnis')(StokController.dashboard_analytics_stock_predict))
 
     Route.get('/stok/api/monitoring', menu('stok_index')(StokController.fetch_monitoring_data))
-    Route.get('/stok/perhitungan', menu('stok_index')(StokController.perhitungan_stok_page))
+
     Route.post('/stok/api/perhitungan/trigger', menu('stok_index')(StokController.trigger_perhitungan_stok))
     Route.post('/stok/api/perhitungan/trigger_tanggal', menu('stok_index')(StokController.trigger_perhitungan_stok_tanggal))
     Route.get('/stok/api/perhitungan/status', menu('stok_index')(StokController.status_perhitungan_stok))
@@ -89,10 +86,6 @@ def register_routes(app):
     Route.post('/master/api/sync-harga', menu('master_update')(StokController.sync_harga_gudang))
     Route.get('/master/api/sync-history', menu('master_update')(StokController.fetch_sync_history))
     
-    Route.post('/api/duckdb/sync', admin(StokController.trigger_duckdb_sync))
-    Route.get('/api/duckdb/status', login(StokController.check_duckdb_status))
-    Route.post('/api/duckdb/mass-sync', admin(StokController.trigger_mass_duckdb_sync))
-    Route.get('/api/duckdb/mass-status', login(StokController.check_mass_duckdb_status))
     # ==========================================================
     # API Routes : Authentication (publik untuk login/logout)
     # ==========================================================
@@ -119,21 +112,6 @@ def register_routes(app):
     Route.get('/stok/get-current-server', login(StokController.get_current_server))
 
     # ==========================================================
-    # API Routes : Snapshot Management
-    # ==========================================================
-    Route.post('/stok/snapshot/refresh', superadmin(StokController.trigger_refresh))
-    Route.post('/stok/snapshot/delta', admin(StokController.trigger_delta_refresh))
-    Route.post('/stok/snapshot/yearly', admin(StokController.trigger_yearly_refresh))
-    Route.post('/stok/snapshot/weekly', admin(StokController.trigger_weekly_refresh))
-    Route.get('/stok/snapshot/status', login(StokController.snapshot_status))
-    Route.post('/stok/snapshot/cancel', login(StokController.cancel_refresh))
-    
-    Route.post('/stok/snapshot/refresh/<path:server_key>', superadmin(StokController.trigger_refresh_target))
-    Route.post('/stok/snapshot/delta/<path:server_key>', admin(StokController.trigger_delta_refresh_target))
-    Route.post('/stok/snapshot/yearly/<path:server_key>', admin(StokController.trigger_yearly_refresh_target))
-    Route.post('/stok/snapshot/weekly/<path:server_key>', admin(StokController.trigger_weekly_refresh_target))
-    Route.get('/stok/snapshot/status/<path:server_key>', login(StokController.snapshot_status_target))
-    Route.get('/stok/snapshot/status-all', login(StokController.global_snapshot_status))
 
     # ==========================================================
     # API Routes : Stok Data (reads from local snapshot) — butuh login

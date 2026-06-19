@@ -1,0 +1,470 @@
+{% extends "base.html" %}
+{% block title %}Komparasi Harga Gudang - Arunika{% endblock %}
+
+{% block extra_css %}
+<style>
+    .page-header { margin-bottom: 1.5rem; }
+    .page-header h3 { font-weight: 800; letter-spacing: -0.03em; margin-bottom: 0.25rem; }
+    .page-header p { color: var(--text-muted); font-size: 0.85rem; margin: 0; }
+
+    .server-badge {
+        display: inline-flex; align-items: center; gap: 0.35rem;
+        padding: 0.3rem 0.75rem; border-radius: 20px;
+        font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
+        background: var(--info-bg); color: var(--info); border: 1px solid rgba(45,127,249,0.2);
+    }
+    .gudang-badge {
+        background: var(--warning-bg); color: var(--warning); border: 1px solid rgba(245,158,11,0.2);
+    }
+
+    .mismatch-table {
+        background: var(--bg-card);
+        border: 1px solid var(--border-card);
+        border-radius: var(--radius);
+        overflow: hidden;
+        margin-top: 1rem;
+    }
+    
+    .table th { background: var(--bg-hover); font-weight: 600; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; border-bottom: 1px solid var(--border-card); padding: 1rem; }
+    .table td { padding: 1rem; vertical-align: middle; border-bottom: 1px solid var(--border-light); font-size: 0.85rem; }
+    
+    .price-col { font-weight: 600; }
+    .price-gudang { color: var(--warning); }
+    .price-target { color: var(--danger); }
+    .price-diff { color: var(--text-muted); font-size: 0.75rem; }
+
+    .empty-state { text-align: center; padding: 4rem 1.5rem; color: var(--text-muted); }
+    .empty-state-icon { font-size: 3rem; margin-bottom: 0.75rem; color: var(--success); opacity: 0.8; }
+
+    .action-bar {
+        display: flex; justify-content: space-between; align-items: center;
+        background: var(--bg-card); padding: 1rem; border-radius: var(--radius);
+        border: 1px solid var(--border-card); margin-bottom: 1rem;
+    }
+
+    /* Notification toast */
+    .toast-notification {
+        position: fixed; top: 80px; right: 24px; padding: 1rem 1.5rem; border-radius: var(--radius-sm);
+        font-weight: 600; font-size: 0.82rem; z-index: 1060; animation: toastIn 0.3s ease; white-space: pre-line; max-width: 360px;
+        box-shadow: var(--shadow-lg);
+    }
+    .toast-notification.success { background: var(--success); color: #fff; }
+    .toast-notification.error { background: var(--danger); color: #fff; }
+    @keyframes toastIn { from{transform:translateX(400px);opacity:0} to{transform:translateX(0);opacity:1} }
+    @keyframes toastOut { from{transform:translateX(0);opacity:1} to{transform:translateX(400px);opacity:0} }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header fade-up">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+            <h3>
+                <i class="fas fa-balance-scale" style="color:var(--accent)"></i> Komparasi Harga
+            </h3>
+            <p>Bandingkan harga antar server dan sinkronkan jika ada perbedaan.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-glass btn-sm text-info" onclick="openHistoryModal()">
+                <i class="fas fa-history"></i> Riwayat Sync
+            </button>
+            <a href="/master/update-barang" class="btn btn-glass btn-sm">
+                <i class="fas fa-arrow-left fa-sm"></i> Kembali ke Master
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Server Selection -->
+<div class="server-selection-box mb-3 p-3 rounded" style="background: var(--bg-card); border: 1px solid var(--border-card);">
+    <div class="row g-3 align-items-end justify-content-center">
+        <div class="col-md-6">
+            <label class="form-label" style="font-weight: 600; color: var(--warning);"><i class="fas fa-warehouse"></i> Server Acuan (Gudang)</label>
+            <select id="sourceServer" class="form-select border-warning">
+                {% for s in gudang_servers %}
+                <option value="{{ s.key }}" {% if s.key == 'GUDANG' %}selected{% endif %}>{{ s.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label" style="font-weight: 600; color: var(--danger);"><i class="fas fa-store"></i> Server Tujuan (Grosir)</label>
+            <select id="targetServer" class="form-select border-danger">
+                {% for s in grosir_servers %}
+                <option value="{{ s.key }}" {% if s.key == selected_server %}selected{% endif %}>{{ s.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-12 mt-3 text-center">
+            <button class="btn btn-accent px-4 py-2" onclick="loadData()">
+                <i class="fas fa-play fa-sm" id="btnSearchIcon"></i> Mulai Pencocokan
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Filters (Hidden Initially) -->
+<div class="search-section fade-up" style="animation-delay:0.1s; display: none;" id="searchFilterBox">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-6 col-12">
+            <label class="form-label"><i class="fas fa-search fa-xs"></i> Cari Barang dalam Hasil Pencocokan</label>
+            <input id="filterQ" class="form-control" placeholder="Ketik Kode atau Nama Barang lalu tekan Enter..." autocomplete="off">
+        </div>
+        <div class="col-6 col-md-4">
+            <label class="form-label"><i class="fas fa-filter fa-xs"></i> Status Barang</label>
+            <select id="filterStatus" class="form-select">
+                <option value="aktif">Hanya Aktif</option>
+                <option value="nonaktif">Hanya Non Aktif</option>
+                <option value="">Semua Status</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- Action Bar -->
+<div class="action-bar fade-up mt-3" style="animation-delay:0.15s; display: none;" id="actionBar">
+    <div class="d-flex align-items-center gap-2">
+        <input type="checkbox" id="selectAll" class="form-check-input" style="width:1.2rem;height:1.2rem;cursor:pointer;">
+        <label for="selectAll" style="font-size:0.85rem;font-weight:600;cursor:pointer;margin:0;">Pilih Semua</label>
+        <span class="badge bg-secondary ms-2" id="selectedCount">0 terpilih</span>
+    </div>
+    <button class="btn btn-success btn-sm" id="btnSyncSelected" onclick="syncSelected()" disabled>
+        <i class="fas fa-cloud-download-alt"></i> Sync Terpilih ke Target
+    </button>
+</div>
+
+<!-- Data Container -->
+<div class="mismatch-table fade-up mt-3" style="animation-delay:0.2s" id="tableContainer">
+    <div id="loadingState" style="display:none; padding: 4rem 1.5rem; text-align: center;">
+        <i class="fas fa-spinner fa-spin fa-3x" style="color:var(--accent); margin-bottom: 1rem;"></i>
+        <h5 style="color:var(--text-muted);">Sedang Mencocokkan Data...</h5>
+        <p style="font-size:0.85rem; color:var(--text-muted);">Proses ini membandingkan ribuan harga antar server, mohon tunggu sebentar.</p>
+    </div>
+
+    <div class="empty-state" id="emptyState" style="display:none;">
+        <div class="empty-state-icon"><i class="fas fa-check-circle"></i></div>
+        <h5>Harga Sudah Sinkron</h5>
+        <p style="font-size:0.85rem">Tidak ditemukan perbedaan harga jual antara Gudang dan Server Target untuk filter saat ini.</p>
+    </div>
+    
+    <div class="table-responsive" id="dataTable" style="display:none; max-height: 60vh; overflow-y: auto;">
+        <table class="table table-hover mb-0" style="position: relative;">
+            <thead style="position: sticky; top: 0; z-index: 10;">
+                <tr>
+                    <th width="50" class="text-center">#</th>
+                    <th>Kode Barang</th>
+                    <th>Nama Barang</th>
+                    <th>Satuan</th>
+                    <th class="text-end">Harga Source</th>
+                    <th class="text-end">Harga Target</th>
+                    <th class="text-end">Selisih</th>
+                    <th class="text-center">Aksi</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
+<!-- Modal Riwayat -->
+<div class="modal fade" id="historyModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold"><i class="fas fa-history" style="color:var(--info)"></i> Riwayat Sinkronisasi Harga</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="historyLoading" class="text-center py-4 text-muted" style="display:none;">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i><br>Memuat riwayat...
+                </div>
+                <div id="historyEmpty" class="text-center py-4 text-muted" style="display:none;">
+                    <i class="fas fa-box-open fa-2x mb-2"></i><br>Belum ada riwayat sinkronisasi.
+                </div>
+                <div class="table-responsive" id="historyTableContainer" style="display:none;">
+                    <table class="table table-sm table-hover" style="font-size:0.85rem">
+                        <thead>
+                            <tr>
+                                <th>Waktu</th>
+                                <th>User</th>
+                                <th>Source &rarr; Target</th>
+                                <th class="text-center">Jumlah Item</th>
+                                <th>Detail (Max 10)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let fullData = [];
+let filteredData = [];
+
+function fmt(n) {
+    return 'Rp ' + Math.round(Number(n)).toLocaleString('id-ID');
+}
+
+async function loadData() {
+    const sourceSrv = document.getElementById('sourceServer').value;
+    const targetSrv = document.getElementById('targetServer').value;
+    
+    if (sourceSrv === targetSrv) {
+        showToast('❌ Server Acuan dan Tujuan tidak boleh sama!', 'error');
+        return;
+    }
+
+    const btnIcon = document.getElementById('btnSearchIcon');
+    btnIcon.className = 'fas fa-spinner fa-spin fa-sm';
+    
+    // UI Loading state
+    document.getElementById('dataTable').style.display = 'none';
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('actionBar').style.display = 'none';
+    document.getElementById('searchFilterBox').style.display = 'none';
+    document.getElementById('loadingState').style.display = 'block';
+    
+    const params = new URLSearchParams({
+        source_server: sourceSrv,
+        target_server: targetSrv
+    });
+
+    try {
+        const res = await fetch('/master/api/compare-harga?' + params);
+        const data = await res.json();
+        
+        if (data.status !== 'success') {
+            throw new Error(data.message || 'Gagal memuat data');
+        }
+
+        fullData = data.data;
+        document.getElementById('searchFilterBox').style.display = 'flex'; // Show filters after match
+        applyFilters();
+    } catch (err) {
+        showToast('❌ ' + err.message, 'error');
+        document.getElementById('emptyState').style.display = 'block';
+        document.getElementById('emptyState').innerHTML = `<h5 class="text-danger">Gagal Memuat Data</h5><p>${err.message}</p>`;
+    } finally {
+        btnIcon.className = 'fas fa-play fa-sm';
+        document.getElementById('loadingState').style.display = 'none';
+    }
+}
+
+function applyFilters() {
+    const q = document.getElementById('filterQ').value.toLowerCase().trim();
+    const status = document.getElementById('filterStatus').value;
+    
+    filteredData = fullData.filter(item => {
+        // Filter Status
+        if (status === 'aktif' && item.status_barang != 1) return false;
+        if (status === 'nonaktif' && item.status_barang == 1) return false;
+        
+        // Filter Query
+        if (q) {
+            const searchStr = `${item.kd_barang} ${item.nama_barang}`.toLowerCase();
+            if (!searchStr.includes(q)) return false;
+        }
+        return true;
+    });
+    
+    renderTable();
+}
+
+function renderTable() {
+    const tbody = document.getElementById('tableBody');
+    const emptyState = document.getElementById('emptyState');
+    const dataTable = document.getElementById('dataTable');
+    const actionBar = document.getElementById('actionBar');
+    
+    tbody.innerHTML = '';
+    document.getElementById('selectAll').checked = false;
+    updateSelectedCount();
+
+    if (filteredData.length === 0) {
+        emptyState.style.display = 'block';
+        dataTable.style.display = 'none';
+        actionBar.style.display = 'none';
+        return;
+    }
+
+    emptyState.style.display = 'none';
+    dataTable.style.display = 'block';
+    actionBar.style.display = 'flex';
+
+    // To prevent freezing, we can just render the first 300 items or use a chunking method if it's very large.
+    // For now we'll render up to 500 items max visually, it's usually enough for mismatches.
+    const renderLimit = Math.min(filteredData.length, 500);
+    
+    for (let index = 0; index < renderLimit; index++) {
+        const item = filteredData[index];
+        const tr = document.createElement('tr');
+        // We use the fullData index for the syncSingle and checkbox values to maintain exact reference
+        const originalIndex = fullData.indexOf(item);
+        
+        tr.innerHTML = `
+            <td class="text-center">
+                <input type="checkbox" class="form-check-input row-checkbox" value="${originalIndex}" style="width:1.1rem;height:1.1rem;cursor:pointer;">
+            </td>
+            <td><span class="badge bg-light text-dark border">${item.kd_barang}</span> ${item.status_barang != 1 ? '<span class="badge bg-danger ms-1">Nonaktif</span>' : ''}</td>
+            <td style="font-weight:600">${item.nama_barang}</td>
+            <td><span class="badge bg-secondary">${item.nama_satuan}</span></td>
+            <td class="text-end price-col price-gudang">${fmt(item.harga_gudang)}</td>
+            <td class="text-end price-col price-target">${fmt(item.harga_target)}</td>
+            <td class="text-end price-diff">
+                <i class="fas ${item.harga_gudang > item.harga_target ? 'fa-arrow-up text-success' : 'fa-arrow-down text-danger'}"></i> 
+                ${fmt(item.selisih)}
+            </td>
+            <td class="text-center">
+                <button class="btn btn-sm btn-outline-success" onclick="syncSingle(${originalIndex})">
+                    <i class="fas fa-sync-alt"></i> Sync
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    }
+    
+    if (filteredData.length > 500) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="8" class="text-center text-muted py-3">Menampilkan 500 dari ${filteredData.length} hasil... Gunakan pencarian untuk hasil lebih spesifik.</td>`;
+        tbody.appendChild(tr);
+    }
+
+    // Event listeners for checkboxes
+    document.querySelectorAll('.row-checkbox').forEach(cb => {
+        cb.addEventListener('change', updateSelectedCount);
+    });
+}
+
+function updateSelectedCount() {
+    const checkboxes = document.querySelectorAll('.row-checkbox');
+    const checked = document.querySelectorAll('.row-checkbox:checked');
+    document.getElementById('selectedCount').textContent = `${checked.length} terpilih`;
+    
+    const selectAllCb = document.getElementById('selectAll');
+    selectAllCb.checked = checkboxes.length > 0 && checked.length === checkboxes.length;
+    
+    document.getElementById('btnSyncSelected').disabled = checked.length === 0;
+}
+
+document.getElementById('selectAll').addEventListener('change', (e) => {
+    document.querySelectorAll('.row-checkbox').forEach(cb => {
+        cb.checked = e.target.checked;
+    });
+    updateSelectedCount();
+});
+
+async function executeSync(itemsToSync) {
+    if (itemsToSync.length === 0) return;
+    
+    const targetSrv = document.getElementById('targetServer').value;
+
+    try {
+        const res = await fetch('/master/api/sync-harga', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                target_server: targetSrv,
+                items: itemsToSync 
+            })
+        });
+        
+        const result = await res.json();
+        if (result.status === 'success') {
+            showToast('✅ ' + result.message, 'success');
+            loadData(); // Reload data after successful sync
+        } else {
+            throw new Error(result.message || 'Gagal sinkronisasi harga');
+        }
+    } catch (err) {
+        showToast('❌ ' + err.message, 'error');
+    }
+}
+
+function syncSingle(index) {
+    const item = fullData[index];
+    executeSync([item]);
+}
+
+function syncSelected() {
+    const checked = document.querySelectorAll('.row-checkbox:checked');
+    const itemsToSync = Array.from(checked).map(cb => fullData[cb.value]);
+    
+    if (confirm(`Anda yakin ingin sinkronisasi ${itemsToSync.length} barang ke server target?`)) {
+        executeSync(itemsToSync);
+    }
+}
+
+function showToast(msg, type) {
+    const el = document.createElement('div');
+    el.className = `toast-notification ${type}`;
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => { el.style.animation = 'toastOut 0.3s ease'; setTimeout(() => el.remove(), 300); }, 3500);
+}
+
+// Debounce timer for search
+let searchTimeout;
+
+// Key bindings and listeners for client-side filtering
+document.getElementById('filterQ')?.addEventListener('input', e => { 
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => applyFilters(), 300); // 300ms debounce
+});
+document.getElementById('filterStatus')?.addEventListener('change', () => applyFilters());
+
+// History Modal Logic
+let historyModalInstance = null;
+
+async function openHistoryModal() {
+    if (!historyModalInstance) {
+        historyModalInstance = new bootstrap.Modal(document.getElementById('historyModal'));
+    }
+    
+    document.getElementById('historyLoading').style.display = 'block';
+    document.getElementById('historyEmpty').style.display = 'none';
+    document.getElementById('historyTableContainer').style.display = 'none';
+    
+    historyModalInstance.show();
+    
+    try {
+        const res = await fetch('/master/api/sync-history');
+        const data = await res.json();
+        
+        document.getElementById('historyLoading').style.display = 'none';
+        
+        if (data.status === 'success') {
+            if (data.data.length === 0) {
+                document.getElementById('historyEmpty').style.display = 'block';
+            } else {
+                const tbody = document.getElementById('historyTableBody');
+                tbody.innerHTML = '';
+                data.data.forEach(log => {
+                    const tr = document.createElement('tr');
+                    const itemsHtml = log.items ? log.items.map(i => `<span class="badge bg-light text-dark border me-1">${i}</span>`).join('') : '-';
+                    tr.innerHTML = `
+                        <td style="white-space:nowrap">${log.timestamp}</td>
+                        <td>${log.user}</td>
+                        <td><span class="badge bg-warning text-dark">${log.source}</span> &rarr; <span class="badge bg-danger">${log.target}</span></td>
+                        <td class="text-center fw-bold text-success">${log.count}</td>
+                        <td>${itemsHtml}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+                document.getElementById('historyTableContainer').style.display = 'block';
+            }
+        } else {
+            showToast('Gagal memuat riwayat', 'error');
+        }
+    } catch (err) {
+        document.getElementById('historyLoading').style.display = 'none';
+        showToast('Koneksi bermasalah', 'error');
+    }
+}
+
+// Initial state (Do not auto-load)
+// document.addEventListener('DOMContentLoaded', () => loadData());
+</script>
+{% endblock %}
