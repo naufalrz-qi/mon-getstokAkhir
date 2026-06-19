@@ -184,13 +184,6 @@ class SnapshotRunner:
                 LEFT JOIN m_barang_satuan s (NOLOCK) ON d.kd_barang = s.kd_barang AND d.kd_satuan = s.kd_satuan
                 WHERE CAST(t.tanggal AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
 
-                UNION ALL
-                -- Pemakaian Barang
-                SELECT t.kd_divisi, d.kd_barang, 0 AS debet, d.qty * COALESCE(s.jumlah, 1) AS kredit
-                FROM t_pemakaian_barang_detail d (NOLOCK)
-                INNER JOIN t_pemakaian_barang t (NOLOCK) ON d.no_transaksi = t.no_transaksi
-                LEFT JOIN m_barang_satuan s (NOLOCK) ON d.kd_barang = s.kd_barang AND d.kd_satuan = s.kd_satuan
-                WHERE CAST(t.tanggal AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
 
                 UNION ALL
                 -- Transaksi Barang (Penyesuaian)
@@ -205,7 +198,7 @@ class SnapshotRunner:
             GROUP BY kd_divisi, kd_barang
             """
             
-            params = [start_date, end_date] * 8
+            params = [start_date, end_date] * 7
 
             if use_stok_awal:
                 stok_awal_query = """
