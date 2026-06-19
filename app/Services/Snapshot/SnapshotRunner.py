@@ -115,7 +115,7 @@ class SnapshotRunner:
                     harga_avg_map[r[0]] = float(r[1] or 0)
 
                 # Satuan Konversi
-                cursor.execute("SELECT kd_barang, kd_satuan, jumlah, nama_satuan FROM m_barang_satuan (NOLOCK)")
+                cursor.execute("SELECT kd_barang, kd_satuan, jumlah, satuan as nama_satuan FROM v_m_barang_satuan (NOLOCK)")
                 for r in cursor.fetchall():
                     satuan_map[(r[0], r[1])] = {
                         'jumlah': float(r[2] or 1),
